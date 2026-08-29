@@ -1,0 +1,32 @@
+{
+  "name": "create-release-action",
+  "version": "0.0.0-development",
+  "description": "Create GitHub releases with provider-neutral AI-generated release notes.",
+  "license": "MIT",
+  "repository": "github:neurekadev/create-release-action",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "rollup --config",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "test:unit": "node --test test/unit/*.test.js"
+  },
+  "dependencies": {
+    "@actions/core": "3.0.1",
+    "@actions/github": "9.1.1",
+    "@actions/glob": "0.7.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "29.0.3",
+    "@rollup/plugin-json": "6.1.0",
+    "@rollup/plugin-node-resolve": "16.0.3",
+    "eslint": "10.9.1",
+    "prettier": "3.9.6",
+    "rollup": "4.63.1"
+  }
+}

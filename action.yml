@@ -1,0 +1,64 @@
+name: Create Release Action
+description: Create a GitHub Release with provider-neutral AI-generated release notes.
+author: Neureka.Dev
+
+branding:
+  icon: package
+  color: purple
+
+inputs:
+  github-token:
+    description: GitHub token with contents write permission.
+    required: true
+  api-key:
+    description: Optional bearer token for the OpenAI-compatible endpoint.
+    required: false
+  base-url:
+    description: Base URL or full chat completions URL for the OpenAI-compatible endpoint.
+    required: false
+    default: https://api.deepseek.com
+  model:
+    description: Model used to generate release notes.
+    required: false
+    default: deepseek-v4-flash
+  reasoning-effort:
+    description: Reasoning effort, or none to omit the provider parameter.
+    required: false
+    default: high
+  request-options:
+    description: JSON object merged into the chat completions request body.
+    required: false
+    default: "{}"
+  max-chunk:
+    description: Maximum comparison characters sent in each analysis request.
+    required: false
+    default: "200000"
+  timeout:
+    description: Timeout in seconds for each model request.
+    required: false
+    default: "300"
+  files:
+    description: Newline-separated release asset paths or glob patterns.
+    required: false
+  upstream-repository:
+    description: Upstream owner/repository for Neureka fork releases, or auto.
+    required: false
+    default: auto
+  upstream-tag:
+    description: Upstream release tag for Neureka fork releases, or auto.
+    required: false
+    default: auto
+
+outputs:
+  release-id:
+    description: Numeric GitHub Release identifier.
+  release-url:
+    description: Published GitHub Release URL.
+  release-notes:
+    description: Generated Markdown release notes.
+  baseline-tag:
+    description: Published reachable release tag used as the comparison baseline.
+
+runs:
+  using: node24
+  main: dist/index.js
