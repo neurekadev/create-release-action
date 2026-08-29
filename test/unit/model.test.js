@@ -107,6 +107,81 @@ describe("OpenAI-compatible chat completions", () => {
     assert.equal("authorization" in request.headers, false);
     assert.equal(JSON.parse(request.body).reasoning_effort, "max");
   });
+
+  it("retries one malformed model response with a strict JSON repair prompt", async () => {
+    const requests = [];
+    const client = new ChatCompletionsClient({
+      baseUrl: "https://example.test",
+      apiKey: "",
+      model: "model",
+      reasoningEffort: "none",
+      requestOptions: {},
+      timeoutSeconds: 2,
+      fetchImpl: async (_url, options) => {
+        requests.push(JSON.parse(options.body));
+        return {
+          ok: true,
+          json: async () => ({
+            choices: [
+              {
+                message: {
+                  content:
+                    requests.length === 1
+                      ? "This is not JSON."
+                      : '{"has_release_changes":false,"notes":""}',
+                },
+              },
+            ],
+          }),
+        };
+      },
+    });
+
+    assert.deepEqual(
+      await client.complete([{ role: "user", content: "input" }]),
+      {
+        has_release_changes: false,
+        notes: "",
+      },
+    );
+    assert.equal(requests.length, 2);
+    assert.deepEqual(requests[1].messages.slice(0, 1), requests[0].messages);
+    assert.deepEqual(requests[1].messages.at(-2), {
+      role: "assistant",
+      content: "This is not JSON.",
+    });
+    assert.match(
+      requests[1].messages.at(-1).content,
+      /exactly one valid JSON object/,
+    );
+  });
+
+  it("fails after one JSON repair retry", async () => {
+    let requests = 0;
+    const client = new ChatCompletionsClient({
+      baseUrl: "https://example.test",
+      apiKey: "",
+      model: "model",
+      reasoningEffort: "none",
+      requestOptions: {},
+      timeoutSeconds: 2,
+      fetchImpl: async () => {
+        requests += 1;
+        return {
+          ok: true,
+          json: async () => ({
+            choices: [{ message: { content: "still not JSON" } }],
+          }),
+        };
+      },
+    });
+
+    await assert.rejects(
+      client.complete([{ role: "user", content: "input" }]),
+      /not valid JSON after one retry/,
+    );
+    assert.equal(requests, 2);
+  });
 });
 
 describe("release-note audiences", () => {

@@ -15,18 +15,8 @@ concurrency:
   cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 jobs:
-  preview-release-notes:
-    name: Preview ${{ matrix.name }} Release Notes
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: End User
-            audience: end-user
-          - name: Technical
-            audience: technical
-          - name: Maintainer
-            audience: maintainer
+  preview-end-user:
+    name: Preview End User Release Notes
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -58,8 +48,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           INFERENCE_API_KEY: ${{ secrets.INFERENCE_API_KEY }}
-          PREVIEW_OUTPUT: ${{ github.workspace }}/release-notes-${{ matrix.audience }}.md
-          RELEASE_NOTES_AUDIENCE: ${{ matrix.audience }}
+          PREVIEW_OUTPUT: ${{ github.workspace }}/release-notes-end-user.md
+          RELEASE_NOTES_AUDIENCE: end-user
           TARGET_REPOSITORY: ${{ inputs.repository || github.repository }}
           TARGET_WORKSPACE: ${{ github.workspace }}/target
           WORKFLOW_REPOSITORY: ${{ github.repository }}
@@ -68,7 +58,103 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
-          name: release-notes-preview-${{ matrix.audience }}
-          path: release-notes-${{ matrix.audience }}.md
+          name: release-notes-preview-end-user
+          path: release-notes-end-user.md
+          if-no-files-found: error
+          retention-days: 7
+
+  preview-technical:
+    name: Preview Technical Release Notes
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Check Out Preview Generator
+        uses: actions/checkout@v7
+        with:
+          path: action-source
+          persist-credentials: false
+      - name: Check Out Target Repository
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.repository || github.repository }}
+          path: target
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set Up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: action-source/package-lock.json
+      - name: Install Preview Dependencies
+        working-directory: action-source
+        run: npm ci
+      - name: Generate Release Notes Preview
+        working-directory: action-source
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          INFERENCE_API_KEY: ${{ secrets.INFERENCE_API_KEY }}
+          PREVIEW_OUTPUT: ${{ github.workspace }}/release-notes-technical.md
+          RELEASE_NOTES_AUDIENCE: technical
+          TARGET_REPOSITORY: ${{ inputs.repository || github.repository }}
+          TARGET_WORKSPACE: ${{ github.workspace }}/target
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+        run: node src/preview-index.js
+      - name: Upload Release Notes Preview
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-notes-preview-technical
+          path: release-notes-technical.md
+          if-no-files-found: error
+          retention-days: 7
+
+  preview-maintainer:
+    name: Preview Maintainer Release Notes
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Check Out Preview Generator
+        uses: actions/checkout@v7
+        with:
+          path: action-source
+          persist-credentials: false
+      - name: Check Out Target Repository
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.repository || github.repository }}
+          path: target
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set Up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: action-source/package-lock.json
+      - name: Install Preview Dependencies
+        working-directory: action-source
+        run: npm ci
+      - name: Generate Release Notes Preview
+        working-directory: action-source
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          INFERENCE_API_KEY: ${{ secrets.INFERENCE_API_KEY }}
+          PREVIEW_OUTPUT: ${{ github.workspace }}/release-notes-maintainer.md
+          RELEASE_NOTES_AUDIENCE: maintainer
+          TARGET_REPOSITORY: ${{ inputs.repository || github.repository }}
+          TARGET_WORKSPACE: ${{ github.workspace }}/target
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+        run: node src/preview-index.js
+      - name: Upload Release Notes Preview
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-notes-preview-maintainer
+          path: release-notes-maintainer.md
           if-no-files-found: error
           retention-days: 7

@@ -40156,13 +40156,34 @@ function parseModelJson(content) {
   try {
     parsed = JSON.parse(unwrapped);
   } catch {
-    throw new Error("The model response was not valid JSON.");
+    throw new InvalidModelJsonError();
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("The model response must be a JSON object.");
   }
   return parsed;
 }
+
+class InvalidModelJsonError extends Error {
+  constructor() {
+    super("The model response was not valid JSON.");
+    this.name = "InvalidModelJsonError";
+  }
+}
+
+function messageText(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter((item) => item?.type === "text" && typeof item.text === "string")
+      .map((item) => item.text)
+      .join("");
+  }
+  throw new Error("The model endpoint returned no assistant message content.");
+}
+
+const JSON_REPAIR_PROMPT =
+  "Your previous response was not valid JSON. Return the same answer as exactly one valid JSON object that follows the originally requested schema. Do not include Markdown fences or commentary.";
 
 class ChatCompletionsClient {
   constructor(options) {
@@ -40176,66 +40197,75 @@ class ChatCompletionsClient {
   }
 
   async complete(messages) {
-    const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      this.timeoutMilliseconds,
-    );
     const headers = { "content-type": "application/json" };
     if (this.apiKey) {
       headers.authorization = `Bearer ${this.apiKey}`;
     }
 
-    const body = {
-      model: this.model,
-      messages,
-      response_format: { type: "json_object" },
-      ...this.requestOptions,
-      stream: false,
-    };
-    if (this.reasoningEffort && this.reasoningEffort !== "none") {
-      body.reasoning_effort = this.reasoningEffort;
-    }
-    body.model = this.model;
-    body.messages = messages;
-
-    try {
-      const response = await this.fetch(this.url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        throw new Error(`The model endpoint returned HTTP ${response.status}.`);
-      }
-      const payload = await response.json();
-      const content = payload?.choices?.[0]?.message?.content;
-      if (typeof content === "string") {
-        return parseModelJson(content);
-      }
-      if (Array.isArray(content)) {
-        const text = content
-          .filter(
-            (item) => item?.type === "text" && typeof item.text === "string",
-          )
-          .map((item) => item.text)
-          .join("");
-        return parseModelJson(text);
-      }
-      throw new Error(
-        "The model endpoint returned no assistant message content.",
+    let requestMessages = messages;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const controller = new AbortController();
+      const timeout = setTimeout(
+        () => controller.abort(),
+        this.timeoutMilliseconds,
       );
-    } catch (error) {
-      if (error?.name === "AbortError") {
-        throw new Error(
-          `The model request exceeded ${this.timeoutMilliseconds / 1000} seconds.`,
-        );
+      const body = {
+        model: this.model,
+        messages: requestMessages,
+        response_format: { type: "json_object" },
+        ...this.requestOptions,
+        stream: false,
+      };
+      if (this.reasoningEffort && this.reasoningEffort !== "none") {
+        body.reasoning_effort = this.reasoningEffort;
       }
-      throw error;
-    } finally {
-      clearTimeout(timeout);
+      body.model = this.model;
+      body.messages = requestMessages;
+
+      try {
+        const response = await this.fetch(this.url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          throw new Error(
+            `The model endpoint returned HTTP ${response.status}.`,
+          );
+        }
+        const payload = await response.json();
+        const content = messageText(payload?.choices?.[0]?.message?.content);
+        try {
+          return parseModelJson(content);
+        } catch (error) {
+          if (!(error instanceof InvalidModelJsonError)) {
+            throw error;
+          }
+          if (attempt > 0) {
+            throw new Error(
+              "The model response was not valid JSON after one retry.",
+            );
+          }
+          requestMessages = [
+            ...messages,
+            { role: "assistant", content },
+            { role: "user", content: JSON_REPAIR_PROMPT },
+          ];
+        }
+      } catch (error) {
+        if (error?.name === "AbortError") {
+          throw new Error(
+            `The model request exceeded ${this.timeoutMilliseconds / 1000} seconds.`,
+          );
+        }
+        throw error;
+      } finally {
+        clearTimeout(timeout);
+      }
     }
+
+    throw new Error("The model response could not be completed.");
   }
 }
 
