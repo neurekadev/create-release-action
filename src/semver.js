@@ -1,7 +1,7 @@
 const SEMVER_PATTERN =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
 
-const NEUREKA_PATTERN = /^neureka\.([1-9]\d*)$/;
+const REVISION_PATTERN = /^revision\.([1-9]\d*)$/;
 
 export function parseSemVer(value) {
   const match = SEMVER_PATTERN.exec(value.trim());
@@ -10,11 +10,12 @@ export function parseSemVer(value) {
   }
 
   const [, major, minor, patch, prerelease, build] = match;
-  const neurekaMatch = build ? NEUREKA_PATTERN.exec(build) : null;
-  const neurekaLooking = build === "neureka" || build?.startsWith("neureka.");
-  if (neurekaLooking && (prerelease || !neurekaMatch)) {
+  const revisionMatch = build ? REVISION_PATTERN.exec(build) : null;
+  const revisionLooking =
+    build === "revision" || build?.startsWith("revision.");
+  if (revisionLooking && (prerelease || !revisionMatch)) {
     throw new Error(
-      "Neureka versions must be stable and use exactly '+neureka.N' with a positive revision without leading zeros.",
+      "Revision releases must be stable and use exactly '+revision.N' with a positive revision without leading zeros.",
     );
   }
 
@@ -26,7 +27,7 @@ export function parseSemVer(value) {
     core: `${major}.${minor}.${patch}`,
     prerelease: prerelease || null,
     build: build || null,
-    forkRevision: neurekaMatch ? Number(neurekaMatch[1]) : null,
+    revision: revisionMatch ? Number(revisionMatch[1]) : null,
   };
 }
 

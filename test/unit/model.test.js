@@ -59,17 +59,17 @@ describe("OpenAI-compatible chat completions", () => {
     assert.equal("reasoning_effort" in body, false);
   });
 
-  it("supports endpoints without authentication", async () => {
-    let headers;
+  it("supports endpoints without authentication and sends max reasoning", async () => {
+    let request;
     const client = new ChatCompletionsClient({
       baseUrl: "https://example.test",
       apiKey: "",
       model: "model",
-      reasoningEffort: "high",
-      requestOptions: {},
+      reasoningEffort: "max",
+      requestOptions: { reasoning_effort: "low" },
       timeoutSeconds: 2,
       fetchImpl: async (_url, options) => {
-        headers = options.headers;
+        request = options;
         return {
           ok: true,
           json: async () => ({
@@ -79,7 +79,8 @@ describe("OpenAI-compatible chat completions", () => {
       },
     });
     assert.deepEqual(await client.complete([]), { ok: true });
-    assert.equal("authorization" in headers, false);
+    assert.equal("authorization" in request.headers, false);
+    assert.equal(JSON.parse(request.body).reasoning_effort, "max");
   });
 
   it("splits comparisons without dropping or duplicating text", () => {
@@ -113,7 +114,7 @@ describe("OpenAI-compatible chat completions", () => {
     const notes = await generateReleaseNotes(client, comparison, {
       version: parseSemVer("1.0.0"),
       baselineTag: null,
-      fork: null,
+      softFork: null,
       maxChunk: 1000,
     });
     const sentChunks = calls

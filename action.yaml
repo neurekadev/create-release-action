@@ -24,7 +24,7 @@ inputs:
   reasoning-effort:
     description: Reasoning effort, or none to omit the provider parameter.
     required: false
-    default: high
+    default: max
   request-options:
     description: JSON object merged into the chat completions request body.
     required: false
@@ -41,11 +41,11 @@ inputs:
     description: Newline-separated release asset paths or glob patterns.
     required: false
   upstream-repository:
-    description: Upstream owner/repository for Neureka fork releases, or auto.
+    description: Upstream owner/repository for soft-fork revision releases, or auto.
     required: false
     default: auto
   upstream-tag:
-    description: Upstream release tag for Neureka fork releases, or auto.
+    description: Upstream release tag for soft-fork revision releases, or auto.
     required: false
     default: auto
 

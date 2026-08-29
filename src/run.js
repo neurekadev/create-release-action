@@ -1,8 +1,8 @@
 import { resolveAssets } from "./assets.js";
 import {
-  findPreviousFork,
-  resolveFork,
-  validateForkTransition,
+  analyzeForkHistory,
+  resolveSoftFork,
+  validateReleaseTransition,
 } from "./fork.js";
 import { GitRepository } from "./git.js";
 import { GitHubService, selectBaseline } from "./github.js";
@@ -101,17 +101,20 @@ export async function runAction(dependencies) {
     context.sha,
     git,
   );
-  const repository = await github.getRepository();
-  const previousFork = findPreviousFork(reachable);
-  validateForkTransition(version, previousFork, Boolean(repository.fork));
-  const fork = await resolveFork({
-    github,
-    repository,
-    version,
-    previousFork,
-    upstreamRepository: core.getInput("upstream-repository"),
-    upstreamTag: core.getInput("upstream-tag"),
-  });
+  const history = analyzeForkHistory(reachable);
+  const releaseMode = validateReleaseTransition(version, history);
+  let softFork = null;
+  if (releaseMode === "soft") {
+    const repository = await github.getRepository();
+    softFork = await resolveSoftFork({
+      github,
+      repository,
+      version,
+      previousRevision: history.previousRevision,
+      upstreamRepository: core.getInput("upstream-repository"),
+      upstreamTag: core.getInput("upstream-tag"),
+    });
+  }
 
   const comparison = await git.buildComparison(
     baseline?.tag_name || null,
@@ -129,10 +132,10 @@ export async function runAction(dependencies) {
   let notes = await generateReleaseNotes(model, comparison, {
     version,
     baselineTag: baseline?.tag_name || null,
-    fork,
+    softFork,
     maxChunk: integerInput(core, "max-chunk", 1000),
   });
-  if (fork) notes = `${fork.line}\n\n${notes}`;
+  if (softFork) notes = `${softFork.line}\n\n${notes}`;
 
   const assets = await resolveAssets(core.getInput("files"), globber);
   const prerelease = isPrerelease(version);
@@ -143,7 +146,7 @@ export async function runAction(dependencies) {
     assets,
     makeLatest: prerelease
       ? "false"
-      : version.forkRevision !== null
+      : version.revision !== null
         ? "true"
         : "legacy",
   });

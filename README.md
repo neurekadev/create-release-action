@@ -14,7 +14,7 @@ Publish GitHub Releases from bare Semantic Version tags with release notes gener
 
 ## Quickstart
 
-Add the release job to your existing `.github/workflows/CI.yaml` after its `lint`, `unit-tests`, and `build` jobs. Store the provider credential as the repository secret `AI_API_KEY`.
+Add the release job to your existing `.github/workflows/CI.yaml` after its `lint`, `unit-tests`, and `build` jobs. Store the provider credential as the repository secret `INFERENCE_API_KEY`.
 
 ```yaml
 release:
@@ -37,21 +37,21 @@ release:
       uses: neurekadev/create-release-action@1
       with:
         github-token: ${{ github.token }}
-        api-key: ${{ secrets.AI_API_KEY }}
+        api-key: ${{ secrets.INFERENCE_API_KEY }}
 ```
 
 Push a complete bare Semantic Version tag such as `1.4.0`. Do not prefix it with `v`.
 
 ## Usage
 
-The defaults use DeepSeek. Change `base-url`, `model`, and `reasoning-effort` for another OpenAI-compatible provider. Set `reasoning-effort: none` when an endpoint does not accept that parameter. `api-key` is optional, so local or otherwise unauthenticated endpoints work without an authorization header.
+The defaults use DeepSeek with maximum reasoning effort. Change `base-url`, `model`, and `reasoning-effort` for another OpenAI-compatible provider. Set `reasoning-effort: none` when an endpoint does not accept that parameter. `api-key` is optional, so local or otherwise unauthenticated endpoints work without an authorization header.
 
 ```yaml
 - name: Create Release
   uses: neurekadev/create-release-action@1
   with:
     github-token: ${{ github.token }}
-    api-key: ${{ secrets.AI_API_KEY }}
+    api-key: ${{ secrets.INFERENCE_API_KEY }}
     base-url: https://api.example.com/v1
     model: example-model
     reasoning-effort: none
@@ -63,19 +63,19 @@ The defaults use DeepSeek. Change `base-url`, `model`, and `reasoning-effort` fo
 
 ### Inputs
 
-| Input                 | Default                    | Purpose                                                                                                |
-| --------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `github-token`        | Required                   | Creates, uploads, and publishes the GitHub Release.                                                    |
-| `api-key`             | Empty                      | Optional bearer token for the model endpoint. Use the provider-neutral `AI_API_KEY` repository secret. |
-| `base-url`            | `https://api.deepseek.com` | Provider base URL or full `/chat/completions` URL.                                                     |
-| `model`               | `deepseek-v4-flash`        | Provider model identifier.                                                                             |
-| `reasoning-effort`    | `high`                     | Provider reasoning effort; `none` omits the field.                                                     |
-| `request-options`     | `{}`                       | Extra JSON merged into the chat completions request body.                                              |
-| `max-chunk`           | `200000`                   | Maximum comparison characters per analysis request.                                                    |
-| `timeout`             | `300`                      | Timeout in seconds for each model request.                                                             |
-| `files`               | Empty                      | Newline-separated asset paths or glob patterns.                                                        |
-| `upstream-repository` | `auto`                     | `owner/repository` used to resolve Neureka upstream release notes.                                     |
-| `upstream-tag`        | `auto`                     | Exact upstream release tag when it cannot be inferred.                                                 |
+| Input                 | Default                    | Purpose                                                                                            |
+| --------------------- | -------------------------- | -------------------------------------------------------------------------------------------------- |
+| `github-token`        | Required                   | Creates, uploads, and publishes the GitHub Release.                                                |
+| `api-key`             | Empty                      | Optional bearer token for the model endpoint. Use the provider-neutral `INFERENCE_API_KEY` secret. |
+| `base-url`            | `https://api.deepseek.com` | Provider base URL or full `/chat/completions` URL.                                                 |
+| `model`               | `deepseek-v4-flash`        | Provider model identifier.                                                                         |
+| `reasoning-effort`    | `max`                      | Provider reasoning effort; `none` omits the field.                                                 |
+| `request-options`     | `{}`                       | Extra JSON merged into the chat completions request body.                                          |
+| `max-chunk`           | `200000`                   | Maximum comparison characters per analysis request.                                                |
+| `timeout`             | `300`                      | Timeout in seconds for each model request.                                                         |
+| `files`               | Empty                      | Newline-separated asset paths or glob patterns.                                                    |
+| `upstream-repository` | `auto`                     | `owner/repository` used to resolve soft-fork upstream release notes.                               |
+| `upstream-tag`        | `auto`                     | Exact soft-fork upstream release tag when it cannot be inferred.                                   |
 
 ### Outputs
 
@@ -91,7 +91,7 @@ The defaults use DeepSeek. Change `base-url`, `model`, and `reasoning-effort` fo
 - Analyzes complete commit history and textual diffs without truncating large comparisons.
 - Generates deduplicated release notes containing only net user-facing changes.
 - Publishes requested assets through a draft-first flow with scoped failure cleanup.
-- Supports standard releases and contiguous Neureka downstream revisions.
+- Supports ordinary releases plus contiguous soft-fork revisions and hard-fork transitions.
 
 ## Release Rules
 
@@ -99,7 +99,9 @@ The newest published release reachable from the pushed tag is the baseline. The 
 
 Release notes describe only net user-facing changes. They group and deduplicate related work under `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, and `Security`; omit internal-only work; and do not read or require `CHANGELOG.md`. A release is not created when no user-facing changes remain.
 
-For `X.Y.Z+neureka.N` tags, the action enforces contiguous downstream revisions, upstream resets to revision `1`, numeric upstream ordering, and a canonical upstream release link. Only downstream user-facing changes appear in the notes.
+A soft fork continues an upstream version line with `X.Y.Z+revision.N`, where `X.Y.Z` is the exact stable upstream release and `N` is a contiguous downstream revision. A newer upstream core resets the revision to `1`. The action adds a canonical upstream release link and includes only downstream user-facing changes. GitHub fork metadata helps resolve the upstream but does not force this scheme.
+
+A hard fork owns an independent version line and uses ordinary Semantic Version tags. Converting a soft fork to a hard fork requires the next stable major `M+1.0.0`; subsequent releases use normal Semantic Versioning and cannot return to revision tags.
 
 Notes are generated before GitHub is mutated. The action then creates a draft, uploads every requested asset, and publishes it. A failed run removes only its own still-draft release. An existing published release is left byte-for-byte unchanged, while an existing draft blocks the run.
 

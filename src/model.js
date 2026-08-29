@@ -231,7 +231,7 @@ export async function generateReleaseNotes(client, comparison, options) {
   const context = releaseContext(
     options.version,
     options.baselineTag,
-    options.fork,
+    options.softFork,
   );
   const chunks = splitWithoutLoss(comparison, options.maxChunk);
   let source;

@@ -114,7 +114,7 @@ jobs:
         uses: ./
         with:
           github-token: ${{ github.token }}
-          api-key: ${{ secrets.AI_API_KEY }}
+          api-key: ${{ secrets.INFERENCE_API_KEY }}
       - name: Update Compatibility Tags
         if: ${{ !contains(github.ref_name, '-') && !contains(github.ref_name, '+') }}
         env:
