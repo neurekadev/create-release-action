@@ -46,21 +46,56 @@ Push a complete bare Semantic Version tag such as `1.4.0`. Do not prefix it with
 
 The defaults use DeepSeek with maximum reasoning effort. Change `base-url`, `model`, and `reasoning-effort` for another OpenAI-compatible provider. Set `reasoning-effort: none` when an endpoint does not accept that parameter. `api-key` is optional, so local or otherwise unauthenticated endpoints work without an authorization header.
 
+### Regenerate Release Notes
+
+Expose the target tag and audience through your existing `.github/workflows/CI.yaml` to regenerate the body of a published release manually. The action keeps its other input defaults.
+
 ```yaml
-- name: Create Release
-  uses: neurekadev/create-release-action@1
-  with:
-    github-token: ${{ github.token }}
-    api-key: ${{ secrets.INFERENCE_API_KEY }}
-    base-url: https://api.example.com/v1
-    model: example-model
-    reasoning-effort: none
-    release-notes-audience: technical
-    request-options: '{"temperature":0.2}'
-    files: |
-      dist/*.tar.gz
-      dist/*.zip
+name: CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      release-tag:
+        description: Existing bare Semantic Version release tag.
+        required: true
+        type: string
+      release-notes-audience:
+        description: Audience for the regenerated notes.
+        required: false
+        default: end-user
+        type: choice
+        options:
+          - end-user
+          - technical
+          - maintainer
+
+permissions: {}
+
+jobs:
+  regenerate-release-notes:
+    name: Regenerate Release Notes
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check Out Repository History
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.release-tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Regenerate Release Notes
+        uses: neurekadev/create-release-action@1
+        with:
+          github-token: ${{ github.token }}
+          api-key: ${{ secrets.INFERENCE_API_KEY }}
+          release-tag: ${{ inputs.release-tag }}
+          release-notes-audience: ${{ inputs.release-notes-audience }}
 ```
+
+The selected published release is edited in place. Its tag, name, release ID, assets, published and prerelease states, and latest-release behavior are preserved.
 
 ### Inputs
 
@@ -71,11 +106,12 @@ The defaults use DeepSeek with maximum reasoning effort. Change `base-url`, `mod
 | `base-url`               | `https://api.deepseek.com` | Provider base URL or full `/chat/completions` URL.                                                 |
 | `model`                  | `deepseek-v4-flash`        | Provider model identifier.                                                                         |
 | `reasoning-effort`       | `max`                      | Provider reasoning effort; `none` omits the field.                                                 |
+| `release-tag`            | Empty                      | Existing published bare Semantic Version tag to regenerate during `workflow_dispatch`.             |
 | `release-notes-audience` | `end-user`                 | Note audience: `end-user`, `technical`, or `maintainer`.                                           |
 | `request-options`        | `{}`                       | Extra JSON merged into the chat completions request body.                                          |
 | `max-chunk`              | `200000`                   | Maximum comparison characters per analysis request.                                                |
 | `timeout`                | `300`                      | Timeout in seconds for each model request.                                                         |
-| `files`                  | Empty                      | Newline-separated asset paths or glob patterns.                                                    |
+| `files`                  | Empty                      | Newline-separated asset paths or glob patterns used only when creating a release.                  |
 | `upstream-repository`    | `auto`                     | `owner/repository` used to resolve soft-fork upstream release notes.                               |
 | `upstream-tag`           | `auto`                     | Exact soft-fork upstream release tag when it cannot be inferred.                                   |
 
@@ -92,6 +128,7 @@ The defaults use DeepSeek with maximum reasoning effort. Change `base-url`, `mod
 
 - Analyzes complete commit history and textual diffs without truncating large comparisons.
 - Generates audience-aware release notes from plain-language summaries through complete maintainer detail.
+- Regenerates a published release's notes in place from a manual workflow run.
 - Publishes requested assets through a draft-first flow with scoped failure cleanup.
 - Supports ordinary releases plus contiguous soft-fork revisions and hard-fork transitions.
 
@@ -105,7 +142,9 @@ A soft fork continues an upstream version line with `X.Y.Z+revision.N`, where `X
 
 A hard fork owns an independent version line and uses ordinary Semantic Version tags. Converting a soft fork to a hard fork requires the next stable major `M+1.0.0`; subsequent releases use normal Semantic Versioning and cannot return to revision tags.
 
-Notes are generated before GitHub is mutated. The action then creates a draft, uploads every requested asset, and publishes it. A failed run removes only its own still-draft release. An existing published release is left byte-for-byte unchanged, while an existing draft blocks the run.
+Notes are generated before GitHub is mutated. On a tag push, the action then creates a draft, uploads every requested asset, and publishes it. A failed run removes only its own still-draft release. An existing published release remains a no-op, while an existing draft blocks the run.
+
+On `workflow_dispatch`, `release-tag` selects one existing published release and regenerates its notes with the same comparison, validation, fork, and generation rules. Only the body is updated after generation succeeds; release metadata and assets remain unchanged. A missing, draft-only, invalid, or ambiguous target fails without changing a release.
 
 ## Data and Credentials
 
@@ -119,4 +158,4 @@ Use `neurekadev/create-release-action@1` for compatible updates. Releases use ex
 
 ## Why Use Create Release Action?
 
-It keeps release policy, note generation, asset upload, and safe publication in one small tag-driven action while letting each repository keep one universal `CI.yaml` workflow.
+It keeps release policy, note generation, manual regeneration, asset upload, and safe publication in one small action while letting each repository keep one universal `CI.yaml` workflow.

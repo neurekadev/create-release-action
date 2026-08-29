@@ -25,6 +25,9 @@ inputs:
     description: Reasoning effort, or none to omit the provider parameter.
     required: false
     default: max
+  release-tag:
+    description: Existing bare Semantic Version release tag to regenerate during workflow_dispatch.
+    required: false
   release-notes-audience:
     description: Release-note audience and detail level; end-user, technical, or maintainer.
     required: false
@@ -42,7 +45,7 @@ inputs:
     required: false
     default: "300"
   files:
-    description: Newline-separated release asset paths or glob patterns.
+    description: Newline-separated asset paths or glob patterns used only when creating a release.
     required: false
   upstream-repository:
     description: Upstream owner/repository for soft-fork revision releases, or auto.
