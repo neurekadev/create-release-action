@@ -3,13 +3,38 @@ import { describe, it } from "node:test";
 import {
   ChatCompletionsClient,
   chatCompletionsUrl,
+  comparisonChunks,
+  comparisonSources,
   generateReleaseNotes,
   parseModelJson,
   splitWithoutLoss,
   validateReleaseNotes,
 } from "../../src/model.js";
-import { EVIDENCE_POLICY, RELEASE_POLICY } from "../../src/policy.js";
+import { releaseNoteAudience, releasePolicies } from "../../src/policy.js";
 import { parseSemVer } from "../../src/semver.js";
+
+function comparison(...patches) {
+  return [
+    "Comparison: 1.0.0 -> head",
+    "",
+    "=== COMMITS ===",
+    "commit abc",
+    "Subject: improve the product",
+    "",
+    "=== FULL TEXTUAL DIFF ===",
+    ...patches,
+  ].join("\n");
+}
+
+function patch(path, body) {
+  return [
+    `diff --git a/${path} b/${path}`,
+    `--- a/${path}`,
+    `+++ b/${path}`,
+    "@@ -1 +1 @@",
+    body,
+  ].join("\n");
+}
 
 describe("OpenAI-compatible chat completions", () => {
   it("normalizes base and full endpoint URLs", () => {
@@ -40,7 +65,7 @@ describe("OpenAI-compatible chat completions", () => {
             choices: [
               {
                 message: {
-                  content: '{"has_user_facing_changes":false,"notes":""}',
+                  content: '{"has_release_changes":false,"notes":""}',
                 },
               },
             ],
@@ -82,63 +107,267 @@ describe("OpenAI-compatible chat completions", () => {
     assert.equal("authorization" in request.headers, false);
     assert.equal(JSON.parse(request.body).reasoning_effort, "max");
   });
+});
 
-  it("splits comparisons without dropping or duplicating text", () => {
-    const comparison = `${"a".repeat(900)}\n${"b".repeat(900)}\n${"c".repeat(900)}`;
-    const chunks = splitWithoutLoss(comparison, 1000);
+describe("release-note audiences", () => {
+  it("accepts the three public values and rejects everything else", () => {
+    for (const audience of ["end-user", "technical", "maintainer"]) {
+      assert.equal(releaseNoteAudience(audience), audience);
+    }
+    for (const audience of ["", "user", "nerd", "End-User"]) {
+      assert.throws(() => releaseNoteAudience(audience), /must be one of/);
+    }
+  });
+
+  it("defines everyday, technical, and complete writing contracts", () => {
+    const endUser = releasePolicies("end-user");
+    assert.match(endUser.release, /no programming knowledge/);
+    assert.match(endUser.release, /There is no hard bullet limit/);
+    assert.match(endUser.release, /Fetch, WebSocket/);
+    assert.match(endUser.release, /Semantic Versioning, tags, baselines/);
+    assert.match(endUser.release, /glob patterns/);
+
+    const technical = releasePolicies("technical");
+    assert.match(technical.release, /public API/);
+    assert.match(technical.release, /operators, and integrators/);
+
+    const maintainer = releasePolicies("maintainer");
+    assert.match(
+      maintainer.release,
+      /every distinct product and internal change/,
+    );
+    assert.match(maintainer.release, /frontend performance improvements/);
+  });
+});
+
+describe("provenance-aware comparisons", () => {
+  it("splits text without dropping or duplicating characters", () => {
+    const value = `${"a".repeat(900)}\n${"b".repeat(900)}\n${"c".repeat(900)}`;
+    const chunks = splitWithoutLoss(value, 1000);
     assert.ok(chunks.length > 1);
-    assert.equal(chunks.join(""), comparison);
+    assert.equal(chunks.join(""), value);
     assert.ok(chunks.every((chunk) => chunk.length <= 1000));
   });
 
-  it("analyzes every comparison chunk before final synthesis", async () => {
+  it("marks generated and dependency artifacts as context-only", () => {
+    const value = comparison(
+      patch("src/run.js", "+make releases easier"),
+      patch("dist/index.js", "+class WebSocketClient {}"),
+      patch("package-lock.json", '+"undici": "7.0.0"'),
+      patch("test/unit/run.test.js", "+test the behavior"),
+    );
+    const endUser = comparisonSources(value, "end-user");
+    assert.equal(
+      endUser.find((source) => source.path === "src/run.js").role,
+      "primary",
+    );
+    for (const path of [
+      "dist/index.js",
+      "package-lock.json",
+      "test/unit/run.test.js",
+    ]) {
+      assert.equal(
+        endUser.find((source) => source.path === path).role,
+        "context-only",
+      );
+    }
+    assert.ok(
+      comparisonSources(value, "maintainer").every(
+        (source) => source.role === "primary",
+      ),
+    );
+  });
+
+  it("repeats source provenance across fragments without losing raw content", () => {
+    const value = comparison(
+      patch("src/run.js", `+${"product outcome\n".repeat(100)}`),
+      patch("dist/index.js", `+${"WebSocket internals\n".repeat(100)}`),
+    );
+    const sources = comparisonSources(value, "end-user");
+    const chunks = comparisonChunks(value, 1000, "end-user");
+    const fragments = chunks.flatMap((chunk) => chunk.fragments);
+
+    for (const source of sources) {
+      const rebuilt = fragments
+        .filter((fragment) => fragment.index === source.index)
+        .sort((left, right) => left.fragmentIndex - right.fragmentIndex)
+        .map((fragment) => fragment.content)
+        .join("");
+      assert.equal(rebuilt, source.content);
+    }
+    for (const chunk of chunks.filter((item) => item.role === "context-only")) {
+      assert.match(chunk.content, /source_role="context-only"/);
+      assert.match(chunk.content, /path="dist\/index.js"/);
+    }
+  });
+});
+
+describe("release-note generation", () => {
+  it("filters a single comparison before end-user synthesis", async () => {
     const calls = [];
-    const comparison = `${"first change\n".repeat(100)}${"second change\n".repeat(100)}`;
+    const policies = releasePolicies("end-user");
     const client = {
       complete: async (messages) => {
         calls.push(messages);
-        if (messages[0].content === EVIDENCE_POLICY) {
+        if (messages[0].content === policies.evidence) {
           return {
-            has_user_facing_changes: true,
-            evidence: [{ category: "Added", summary: `chunk ${calls.length}` }],
+            has_release_changes: true,
+            evidence: [
+              { category: "Added", summary: "Publish releases automatically." },
+            ],
           };
         }
-        assert.equal(messages[0].content, RELEASE_POLICY);
+        if (messages[0].content === policies.filter) {
+          return {
+            has_release_changes: true,
+            evidence: [
+              {
+                category: "Added",
+                summary: "Publish releases automatically.",
+                source_role: "primary",
+              },
+            ],
+          };
+        }
+        assert.equal(messages[0].content, policies.release);
+        assert.doesNotMatch(messages[1].content, /WebSocketClient/);
         return {
-          has_user_facing_changes: true,
-          notes: "### Added\n- Add the requested capability.",
+          has_release_changes: true,
+          notes: "### Added\n- Publish new versions automatically.",
         };
       },
     };
 
-    const notes = await generateReleaseNotes(client, comparison, {
-      version: parseSemVer("1.0.0"),
-      baselineTag: null,
-      softFork: null,
-      maxChunk: 1000,
+    const result = await generateReleaseNotes(
+      client,
+      comparison(patch("src/run.js", "+publish a version")),
+      {
+        audience: "end-user",
+        version: parseSemVer("1.1.0"),
+        baselineTag: "1.0.0",
+        softFork: null,
+        maxChunk: 1000,
+      },
+    );
+    assert.equal(calls.length, 3);
+    assert.deepEqual(result, {
+      hasReleaseChanges: true,
+      notes: "### Added\n- Publish new versions automatically.",
     });
-    const sentChunks = calls
-      .filter((messages) => messages[0].content === EVIDENCE_POLICY)
-      .map(
-        (messages) =>
-          messages[1].content.match(
-            /<repository-comparison>\n([\s\S]*)\n<\/repository-comparison>/,
-          )[1],
-      );
-    assert.equal(sentChunks.join(""), comparison);
-    assert.equal(notes, "### Added\n- Add the requested capability.");
   });
 
-  it("rejects malformed or empty release notes", () => {
-    assert.deepEqual(parseModelJson('```json\n{"value":1}\n```'), { value: 1 });
-    assert.throws(
-      () => validateReleaseNotes({ has_user_facing_changes: false, notes: "" }),
-      /No user-facing changes/,
+  it("prevents context-only dependency evidence from creating filtered notes", async () => {
+    let finalCalls = 0;
+    const policies = releasePolicies("technical");
+    const client = {
+      complete: async (messages) => {
+        if (messages[0].content === policies.release) finalCalls += 1;
+        const contextOnly = messages[1].content.includes(
+          "source role: context-only",
+        );
+        return contextOnly
+          ? {
+              has_release_changes: true,
+              evidence: [
+                { category: "Added", summary: "Add WebSocket support." },
+              ],
+            }
+          : { has_release_changes: false, evidence: [] };
+      },
+    };
+    const result = await generateReleaseNotes(
+      client,
+      comparison(patch("dist/index.js", "+class WebSocketClient {}")),
+      {
+        audience: "technical",
+        version: parseSemVer("1.1.0"),
+        baselineTag: "1.0.0",
+        softFork: null,
+        maxChunk: 1000,
+      },
+    );
+    assert.deepEqual(result, { hasReleaseChanges: false, notes: "" });
+    assert.equal(finalCalls, 0);
+  });
+
+  it("uses dependency evidence only to refine a primary product outcome", async () => {
+    const policies = releasePolicies("end-user");
+    const client = {
+      complete: async (messages) => {
+        if (messages[0].content === policies.evidence) {
+          return messages[1].content.includes("source role: context-only")
+            ? {
+                has_release_changes: true,
+                evidence: [
+                  {
+                    category: "Added",
+                    summary: "Add WebSocket and proxy agents.",
+                  },
+                ],
+              }
+            : {
+                has_release_changes: true,
+                evidence: [
+                  {
+                    category: "Added",
+                    summary: "Publish release notes automatically.",
+                  },
+                ],
+              };
+        }
+        if (messages[0].content === policies.filter) {
+          assert.match(messages[1].content, /WebSocket and proxy agents/);
+          return {
+            has_release_changes: true,
+            evidence: [
+              {
+                category: "Added",
+                summary: "Publish clear release notes automatically.",
+                source_role: "primary",
+              },
+            ],
+          };
+        }
+        assert.equal(messages[0].content, policies.release);
+        assert.doesNotMatch(messages[1].content, /WebSocket|proxy agents/);
+        return {
+          has_release_changes: true,
+          notes: "### Added\n- Publish clear release notes automatically.",
+        };
+      },
+    };
+    const result = await generateReleaseNotes(
+      client,
+      comparison(
+        patch("src/run.js", "+publish release notes"),
+        patch("dist/index.js", "+WebSocket and proxy agents"),
+      ),
+      {
+        audience: "end-user",
+        version: parseSemVer("1.1.0"),
+        baselineTag: "1.0.0",
+        softFork: null,
+        maxChunk: 1000,
+      },
+    );
+    assert.equal(
+      result.notes,
+      "### Added\n- Publish clear release notes automatically.",
+    );
+  });
+
+  it("validates structured release-note responses", () => {
+    assert.deepEqual(parseModelJson('```json\n{"value":1}\n```'), {
+      value: 1,
+    });
+    assert.deepEqual(
+      validateReleaseNotes({ has_release_changes: false, notes: "" }),
+      { hasReleaseChanges: false, notes: "" },
     );
     assert.throws(
       () =>
         validateReleaseNotes({
-          has_user_facing_changes: true,
+          has_release_changes: true,
           notes: "### Fixed\ntext",
         }),
       /only allowed/,

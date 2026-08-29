@@ -7,6 +7,7 @@ import {
 import { GitRepository } from "./git.js";
 import { GitHubService, selectBaseline } from "./github.js";
 import { ChatCompletionsClient, generateReleaseNotes } from "./model.js";
+import { releaseNoteAudience } from "./policy.js";
 import { publishReleaseTransaction } from "./release.js";
 import { isPrerelease, parseSemVer } from "./semver.js";
 
@@ -63,6 +64,9 @@ export async function runAction(dependencies) {
   } = dependencies;
   const context = tagContext(env);
   const version = parseSemVer(context.tag);
+  const audience = releaseNoteAudience(
+    core.getInput("release-notes-audience", { required: true }),
+  );
   const token = core.getInput("github-token", { required: true });
   const apiKey = core.getInput("api-key");
   core.setSecret(token);
@@ -129,12 +133,19 @@ export async function runAction(dependencies) {
     timeoutSeconds: integerInput(core, "timeout", 1),
     fetchImpl,
   });
-  let notes = await generateReleaseNotes(model, comparison, {
+  const generated = await generateReleaseNotes(model, comparison, {
     version,
     baselineTag: baseline?.tag_name || null,
     softFork,
+    audience,
     maxChunk: integerInput(core, "max-chunk", 1000),
   });
+  if (!generated.hasReleaseChanges) {
+    throw new Error(
+      `No changes qualified for the ${audience} release-note audience; no release was created.`,
+    );
+  }
+  let notes = generated.notes;
   if (softFork) notes = `${softFork.line}\n\n${notes}`;
 
   const assets = await resolveAssets(core.getInput("files"), globber);

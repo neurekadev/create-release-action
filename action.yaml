@@ -25,6 +25,10 @@ inputs:
     description: Reasoning effort, or none to omit the provider parameter.
     required: false
     default: max
+  release-notes-audience:
+    description: Release-note audience and detail level; end-user, technical, or maintainer.
+    required: false
+    default: end-user
   request-options:
     description: JSON object merged into the chat completions request body.
     required: false

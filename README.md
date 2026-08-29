@@ -55,6 +55,7 @@ The defaults use DeepSeek with maximum reasoning effort. Change `base-url`, `mod
     base-url: https://api.example.com/v1
     model: example-model
     reasoning-effort: none
+    release-notes-audience: technical
     request-options: '{"temperature":0.2}'
     files: |
       dist/*.tar.gz
@@ -63,19 +64,20 @@ The defaults use DeepSeek with maximum reasoning effort. Change `base-url`, `mod
 
 ### Inputs
 
-| Input                 | Default                    | Purpose                                                                                            |
-| --------------------- | -------------------------- | -------------------------------------------------------------------------------------------------- |
-| `github-token`        | Required                   | Creates, uploads, and publishes the GitHub Release.                                                |
-| `api-key`             | Empty                      | Optional bearer token for the model endpoint. Use the provider-neutral `INFERENCE_API_KEY` secret. |
-| `base-url`            | `https://api.deepseek.com` | Provider base URL or full `/chat/completions` URL.                                                 |
-| `model`               | `deepseek-v4-flash`        | Provider model identifier.                                                                         |
-| `reasoning-effort`    | `max`                      | Provider reasoning effort; `none` omits the field.                                                 |
-| `request-options`     | `{}`                       | Extra JSON merged into the chat completions request body.                                          |
-| `max-chunk`           | `200000`                   | Maximum comparison characters per analysis request.                                                |
-| `timeout`             | `300`                      | Timeout in seconds for each model request.                                                         |
-| `files`               | Empty                      | Newline-separated asset paths or glob patterns.                                                    |
-| `upstream-repository` | `auto`                     | `owner/repository` used to resolve soft-fork upstream release notes.                               |
-| `upstream-tag`        | `auto`                     | Exact soft-fork upstream release tag when it cannot be inferred.                                   |
+| Input                    | Default                    | Purpose                                                                                            |
+| ------------------------ | -------------------------- | -------------------------------------------------------------------------------------------------- |
+| `github-token`           | Required                   | Creates, uploads, and publishes the GitHub Release.                                                |
+| `api-key`                | Empty                      | Optional bearer token for the model endpoint. Use the provider-neutral `INFERENCE_API_KEY` secret. |
+| `base-url`               | `https://api.deepseek.com` | Provider base URL or full `/chat/completions` URL.                                                 |
+| `model`                  | `deepseek-v4-flash`        | Provider model identifier.                                                                         |
+| `reasoning-effort`       | `max`                      | Provider reasoning effort; `none` omits the field.                                                 |
+| `release-notes-audience` | `end-user`                 | Note audience: `end-user`, `technical`, or `maintainer`.                                           |
+| `request-options`        | `{}`                       | Extra JSON merged into the chat completions request body.                                          |
+| `max-chunk`              | `200000`                   | Maximum comparison characters per analysis request.                                                |
+| `timeout`                | `300`                      | Timeout in seconds for each model request.                                                         |
+| `files`                  | Empty                      | Newline-separated asset paths or glob patterns.                                                    |
+| `upstream-repository`    | `auto`                     | `owner/repository` used to resolve soft-fork upstream release notes.                               |
+| `upstream-tag`           | `auto`                     | Exact soft-fork upstream release tag when it cannot be inferred.                                   |
 
 ### Outputs
 
@@ -89,7 +91,7 @@ The defaults use DeepSeek with maximum reasoning effort. Change `base-url`, `mod
 ## Features
 
 - Analyzes complete commit history and textual diffs without truncating large comparisons.
-- Generates deduplicated release notes containing only net user-facing changes.
+- Generates audience-aware release notes from plain-language summaries through complete maintainer detail.
 - Publishes requested assets through a draft-first flow with scoped failure cleanup.
 - Supports ordinary releases plus contiguous soft-fork revisions and hard-fork transitions.
 
@@ -97,9 +99,9 @@ The defaults use DeepSeek with maximum reasoning effort. Change `base-url`, `mod
 
 The newest published release reachable from the pushed tag is the baseline. The action sends the complete commit history and textual diff for that comparison to the configured model endpoint. Large comparisons are analyzed losslessly in chunks and synthesized without truncation.
 
-Release notes describe only net user-facing changes. They group and deduplicate related work under `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, and `Security`; omit internal-only work; and do not read or require `CHANGELOG.md`. A release is not created when no user-facing changes remain.
+Release notes describe net changes under `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, and `Security`; deduplicate related work; and do not read or require `CHANGELOG.md`. The default `end-user` audience uses everyday language and includes only noticeable outcomes. `technical` retains useful public API, configuration, compatibility, and operational specifics. `maintainer` includes every distinct net product and internal change. A release is not created when no changes qualify for the selected audience.
 
-A soft fork continues an upstream version line with `X.Y.Z+revision.N`, where `X.Y.Z` is the exact stable upstream release and `N` is a contiguous downstream revision. A newer upstream core resets the revision to `1`. The action adds a canonical upstream release link and includes only downstream user-facing changes. GitHub fork metadata helps resolve the upstream but does not force this scheme.
+A soft fork continues an upstream version line with `X.Y.Z+revision.N`, where `X.Y.Z` is the exact stable upstream release and `N` is a contiguous downstream revision. A newer upstream core resets the revision to `1`. The action adds a canonical upstream release link and includes only qualifying downstream changes for the selected audience. GitHub fork metadata helps resolve the upstream but does not force this scheme.
 
 A hard fork owns an independent version line and uses ordinary Semantic Version tags. Converting a soft fork to a hard fork requires the next stable major `M+1.0.0`; subsequent releases use normal Semantic Versioning and cannot return to revision tags.
 

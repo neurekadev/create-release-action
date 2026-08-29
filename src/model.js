@@ -1,9 +1,69 @@
 import {
-  EVIDENCE_POLICY,
-  REDUCE_POLICY,
-  RELEASE_POLICY,
+  DEFAULT_RELEASE_NOTE_AUDIENCE,
   releaseContext,
+  releaseNoteAudience,
+  releasePolicies,
 } from "./policy.js";
+
+const RELEASE_NOTE_SECTIONS = Object.freeze([
+  "Added",
+  "Changed",
+  "Deprecated",
+  "Removed",
+  "Fixed",
+  "Security",
+]);
+
+const CONTEXT_ONLY_DIRECTORIES = new Set([
+  ".github",
+  "__fixtures__",
+  "__tests__",
+  "build",
+  "coverage",
+  "dist",
+  "fixtures",
+  "node_modules",
+  "spec",
+  "specs",
+  "test",
+  "tests",
+  "third_party",
+  "vendor",
+]);
+
+const CONTEXT_ONLY_BASENAMES = new Set([
+  ".editorconfig",
+  ".gitattributes",
+  ".gitignore",
+  ".prettierignore",
+  ".prettierrc",
+  "bun.lock",
+  "bun.lockb",
+  "cargo.lock",
+  "composer.lock",
+  "dockerfile",
+  "gemfile.lock",
+  "go.sum",
+  "makefile",
+  "npm-shrinkwrap.json",
+  "package-lock.json",
+  "packages.lock.json",
+  "pipfile.lock",
+  "pnpm-lock.yaml",
+  "poetry.lock",
+  "taskfile.yaml",
+  "taskfile.yml",
+  "uv.lock",
+  "yarn.lock",
+]);
+
+export const DEFAULT_MODEL_CONFIGURATION = Object.freeze({
+  baseUrl: "https://api.deepseek.com",
+  model: "deepseek-v4-flash",
+  reasoningEffort: "max",
+  maxChunk: 200000,
+  timeoutSeconds: 300,
+});
 
 export function chatCompletionsUrl(baseUrl) {
   const trimmed = baseUrl.trim().replace(/\/+$/, "");
@@ -36,6 +96,156 @@ export function splitWithoutLoss(value, maximum) {
     start = end;
   }
   return chunks.length ? chunks : [""];
+}
+
+function cleanDiffPath(value) {
+  let path = value.trim();
+  if (path.startsWith('"') && path.endsWith('"')) {
+    path = path.slice(1, -1);
+  }
+  return path.replace(/^[ab]\//, "");
+}
+
+function patchPath(patch) {
+  const added = patch.match(/^\+\+\+ (.+)$/m)?.[1];
+  if (added && added !== "/dev/null") return cleanDiffPath(added);
+  const removed = patch.match(/^--- (.+)$/m)?.[1];
+  if (removed && removed !== "/dev/null") return cleanDiffPath(removed);
+  return "unknown";
+}
+
+export function isContextOnlyPath(value) {
+  const path = value.toLowerCase().replaceAll("\\", "/");
+  const parts = path.split("/").filter(Boolean);
+  const basename = parts.at(-1) || "";
+
+  if (parts.some((part) => CONTEXT_ONLY_DIRECTORIES.has(part))) return true;
+  if (CONTEXT_ONLY_BASENAMES.has(basename)) return true;
+  if (/\.(?:lock|min\.js|map)$/.test(basename)) return true;
+  if (/\.(?:test|spec)\.[^.]+$/.test(basename)) return true;
+  return /^(?:babel|eslint|rollup|vite|webpack)\.config\./.test(basename);
+}
+
+export function comparisonSources(comparison, audienceValue) {
+  const audience = releaseNoteAudience(audienceValue);
+  const marker = "=== FULL TEXTUAL DIFF ===\n";
+  const markerIndex = comparison.indexOf(marker);
+  if (markerIndex < 0) {
+    return [
+      {
+        index: 0,
+        kind: "comparison",
+        path: "repository-comparison",
+        role: "primary",
+        content: comparison,
+      },
+    ];
+  }
+
+  const diffStart = markerIndex + marker.length;
+  const sources = [
+    {
+      index: 0,
+      kind: "history",
+      path: "commit-history",
+      role: "primary",
+      content: comparison.slice(0, diffStart),
+    },
+  ];
+  const diff = comparison.slice(diffStart);
+  const starts = [...diff.matchAll(/^diff --git /gm)].map(
+    (match) => match.index,
+  );
+
+  if (starts.length === 0) {
+    if (diff) {
+      sources.push({
+        index: sources.length,
+        kind: "diff",
+        path: "repository-diff",
+        role: "primary",
+        content: diff,
+      });
+    }
+    return sources;
+  }
+
+  for (let index = 0; index < starts.length; index += 1) {
+    const content = diff.slice(starts[index], starts[index + 1]);
+    const path = patchPath(content);
+    sources.push({
+      index: sources.length,
+      kind: "diff",
+      path,
+      role:
+        audience !== "maintainer" && isContextOnlyPath(path)
+          ? "context-only"
+          : "primary",
+      content,
+    });
+  }
+  return sources;
+}
+
+function escapeAttribute(value) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function chunkPayload(fragments) {
+  return fragments
+    .map(
+      (fragment) =>
+        `<comparison-source path="${escapeAttribute(fragment.path)}" kind="${fragment.kind}" source_role="${fragment.role}" fragment="${fragment.fragmentIndex + 1}/${fragment.fragmentCount}">\n${fragment.content}\n</comparison-source>`,
+    )
+    .join("\n");
+}
+
+export function comparisonChunks(comparison, maximum, audienceValue) {
+  splitWithoutLoss("", maximum);
+  const sources = comparisonSources(comparison, audienceValue);
+  const fragments = sources.flatMap((source) => {
+    const contents = splitWithoutLoss(source.content, maximum);
+    return contents.map((content, fragmentIndex) => ({
+      ...source,
+      content,
+      fragmentIndex,
+      fragmentCount: contents.length,
+    }));
+  });
+  const chunks = [];
+
+  for (const role of ["primary", "context-only"]) {
+    let current = [];
+    let currentLength = 0;
+    for (const fragment of fragments.filter((item) => item.role === role)) {
+      if (
+        current.length > 0 &&
+        currentLength + fragment.content.length > maximum
+      ) {
+        chunks.push({
+          role,
+          fragments: current,
+          content: chunkPayload(current),
+        });
+        current = [];
+        currentLength = 0;
+      }
+      current.push(fragment);
+      currentLength += fragment.content.length;
+    }
+    if (current.length > 0) {
+      chunks.push({
+        role,
+        fragments: current,
+        content: chunkPayload(current),
+      });
+    }
+  }
+  return chunks;
 }
 
 export function parseModelJson(content) {
@@ -130,44 +340,66 @@ export class ChatCompletionsClient {
   }
 }
 
-function validateEvidence(response) {
+function validateEvidenceItem(item, requireSourceRole) {
   if (
-    typeof response.has_user_facing_changes !== "boolean" ||
+    !item ||
+    typeof item !== "object" ||
+    !RELEASE_NOTE_SECTIONS.includes(item.category) ||
+    typeof item.summary !== "string" ||
+    !item.summary.trim()
+  ) {
+    throw new Error("The model returned an invalid evidence item.");
+  }
+  if (
+    requireSourceRole &&
+    !["primary", "context-only"].includes(item.source_role)
+  ) {
+    throw new Error("The model returned evidence without valid provenance.");
+  }
+  return {
+    category: item.category,
+    summary: item.summary.trim(),
+    ...(requireSourceRole ? { source_role: item.source_role } : {}),
+  };
+}
+
+function validateEvidence(response, options = {}) {
+  if (
+    typeof response.has_release_changes !== "boolean" ||
     !Array.isArray(response.evidence)
   ) {
     throw new Error("The model returned an invalid evidence object.");
   }
-  return response;
+  const evidence = response.evidence.map((item) =>
+    validateEvidenceItem(item, options.requireSourceRole),
+  );
+  if (!response.has_release_changes && evidence.length > 0) {
+    throw new Error("The model returned contradictory release evidence.");
+  }
+  return { has_release_changes: response.has_release_changes, evidence };
 }
 
 export function validateReleaseNotes(response) {
   if (
-    typeof response.has_user_facing_changes !== "boolean" ||
+    typeof response.has_release_changes !== "boolean" ||
     typeof response.notes !== "string"
   ) {
     throw new Error("The model returned an invalid release-note object.");
   }
-  if (!response.has_user_facing_changes) {
-    throw new Error(
-      "No user-facing changes were found; no release was created.",
-    );
+  if (!response.has_release_changes) {
+    if (response.notes.trim()) {
+      throw new Error("The model returned notes without qualifying changes.");
+    }
+    return { hasReleaseChanges: false, notes: "" };
   }
 
   const notes = response.notes.trim();
-  const sections = [
-    "Added",
-    "Changed",
-    "Deprecated",
-    "Removed",
-    "Fixed",
-    "Security",
-  ];
   let lastSection = -1;
   let bullets = 0;
   for (const line of notes.split("\n")) {
     if (!line.trim()) continue;
     if (line.startsWith("### ")) {
-      const index = sections.indexOf(line.slice(4).trim());
+      const index = RELEASE_NOTE_SECTIONS.indexOf(line.slice(4).trim());
       if (index < 0 || index <= lastSection) {
         throw new Error(
           "Release-note sections are invalid, duplicated, or out of order.",
@@ -184,13 +416,13 @@ export function validateReleaseNotes(response) {
   }
   if (bullets === 0) {
     throw new Error(
-      "The model reported user-facing changes without any release-note bullets.",
+      "The model reported qualifying changes without any release-note bullets.",
     );
   }
-  return notes;
+  return { hasReleaseChanges: true, notes };
 }
 
-async function reduceEvidence(client, evidence, maxChunk) {
+async function reduceEvidence(client, evidence, maxChunk, policy) {
   let current = evidence;
   for (let round = 0; round < 10; round += 1) {
     const serialized = JSON.stringify(current);
@@ -202,12 +434,13 @@ async function reduceEvidence(client, evidence, maxChunk) {
       reduced.push(
         validateEvidence(
           await client.complete([
-            { role: "system", content: REDUCE_POLICY },
+            { role: "system", content: policy },
             {
               role: "user",
               content: `<release-evidence>\n${chunk}\n</release-evidence>`,
             },
           ]),
+          { requireSourceRole: true },
         ),
       );
     }
@@ -227,37 +460,85 @@ async function reduceEvidence(client, evidence, maxChunk) {
   );
 }
 
-export async function generateReleaseNotes(client, comparison, options) {
-  const context = releaseContext(
-    options.version,
-    options.baselineTag,
-    options.softFork,
+function evidenceSource(evidence) {
+  const primary = evidence.filter((item) => item.source_role === "primary");
+  const context = evidence.filter(
+    (item) => item.source_role === "context-only",
   );
-  const chunks = splitWithoutLoss(comparison, options.maxChunk);
+  return `<primary-release-evidence>\n${JSON.stringify(primary)}\n</primary-release-evidence>\n<context-only-release-evidence>\n${JSON.stringify(context)}\n</context-only-release-evidence>`;
+}
+
+export async function generateReleaseNotes(client, comparison, options) {
+  const audience = releaseNoteAudience(
+    options.audience || DEFAULT_RELEASE_NOTE_AUDIENCE,
+  );
+  const policies = releasePolicies(audience);
+  const context = releaseContext({ ...options, audience });
+  const chunks = comparisonChunks(comparison, options.maxChunk, audience);
   let source;
 
-  if (chunks.length === 1) {
-    source = `<repository-comparison>\n${chunks[0]}\n</repository-comparison>`;
+  if (audience === "maintainer" && chunks.length === 1) {
+    source = `<repository-comparison>\n${chunks[0].content}\n</repository-comparison>`;
   } else {
     const evidence = [];
     for (let index = 0; index < chunks.length; index += 1) {
+      const chunk = chunks[index];
       const response = validateEvidence(
         await client.complete([
-          { role: "system", content: EVIDENCE_POLICY },
+          { role: "system", content: policies.evidence },
           {
             role: "user",
-            content: `Context: ${context}\nChunk ${index + 1} of ${chunks.length}:\n<repository-comparison>\n${chunks[index]}\n</repository-comparison>`,
+            content: `Context: ${context}\nChunk ${index + 1} of ${chunks.length}; source role: ${chunk.role}.\n<repository-comparison>\n${chunk.content}\n</repository-comparison>`,
           },
         ]),
       );
-      evidence.push(...response.evidence);
+      evidence.push(
+        ...response.evidence.map((item) => ({
+          ...item,
+          source_role: chunk.role,
+        })),
+      );
     }
-    const reduced = await reduceEvidence(client, evidence, options.maxChunk);
-    source = `<release-evidence>\n${JSON.stringify(reduced)}\n</release-evidence>`;
+
+    if (evidence.length === 0) {
+      return { hasReleaseChanges: false, notes: "" };
+    }
+    const reduced = await reduceEvidence(
+      client,
+      evidence,
+      options.maxChunk,
+      policies.reduce,
+    );
+    if (audience !== "maintainer") {
+      if (!reduced.some((item) => item.source_role === "primary")) {
+        return { hasReleaseChanges: false, notes: "" };
+      }
+      const filtered = validateEvidence(
+        await client.complete([
+          { role: "system", content: policies.filter },
+          {
+            role: "user",
+            content: evidenceSource(reduced),
+          },
+        ]),
+        { requireSourceRole: true },
+      ).evidence;
+      if (filtered.some((item) => item.source_role !== "primary")) {
+        throw new Error(
+          "The model returned context-only evidence as a qualifying change.",
+        );
+      }
+      if (filtered.length === 0) {
+        return { hasReleaseChanges: false, notes: "" };
+      }
+      source = evidenceSource(filtered);
+    } else {
+      source = evidenceSource(reduced);
+    }
   }
 
   const response = await client.complete([
-    { role: "system", content: RELEASE_POLICY },
+    { role: "system", content: policies.release },
     { role: "user", content: `Release context: ${context}\n${source}` },
   ]);
   return validateReleaseNotes(response);
