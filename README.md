@@ -25,6 +25,7 @@ release:
     - unit-tests
     - build
   runs-on: ubuntu-latest
+  timeout-minutes: 20
   permissions:
     contents: write
   steps:
@@ -48,10 +49,10 @@ The defaults use DeepSeek with maximum reasoning effort. Change `base-url`, `mod
 
 ### Regenerate Release Notes
 
-Expose the target tag and audience through your existing `.github/workflows/CI.yaml` to regenerate the body of a published release manually. The action keeps its other input defaults.
+Add a dedicated `.github/workflows/RegenerateReleaseNotes.yaml` workflow to regenerate the body of a published release manually. The action keeps its other input defaults.
 
 ```yaml
-name: CI
+name: Regenerate Release Notes
 
 on:
   workflow_dispatch:
@@ -77,6 +78,7 @@ jobs:
     name: Regenerate Release Notes
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
     steps:
