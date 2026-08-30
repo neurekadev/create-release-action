@@ -145,6 +145,42 @@ describe("OpenAI-compatible chat completions", () => {
     assert.equal(JSON.parse(request.body).reasoning_effort, "max");
   });
 
+  it("reports sanitized provider error details without exposing the API key", async () => {
+    const client = new ChatCompletionsClient({
+      baseUrl: "https://example.test",
+      apiKey: "secret-value",
+      model: "model",
+      reasoningEffort: "max",
+      requestOptions: {},
+      timeoutSeconds: 2,
+      fetchImpl: async () => ({
+        ok: false,
+        status: 400,
+        headers: {
+          get: (name) => (name === "x-request-id" ? "req_123" : null),
+        },
+        json: async () => ({
+          error: {
+            code: "unsupported_parameter",
+            message: "Unsupported secret-value\nconfiguration",
+            param: "reasoning_effort",
+          },
+        }),
+      }),
+    });
+
+    await assert.rejects(client.complete([]), (error) => {
+      assert.match(error.message, /HTTP 400/);
+      assert.match(error.message, /code: unsupported_parameter/);
+      assert.match(error.message, /parameter: reasoning_effort/);
+      assert.match(error.message, /request: req_123/);
+      assert.match(error.message, /Unsupported \*\*\* configuration/);
+      assert.doesNotMatch(error.message, /secret-value/);
+      assert.doesNotMatch(error.message, /\n/);
+      return true;
+    });
+  });
+
   it("retries one malformed model response with a strict JSON repair prompt", async () => {
     const requests = [];
     const client = new ChatCompletionsClient({

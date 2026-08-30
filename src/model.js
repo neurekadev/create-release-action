@@ -286,6 +286,38 @@ function messageText(content) {
 const JSON_REPAIR_PROMPT =
   "Your previous response was not valid JSON. Return the same answer as exactly one valid JSON object that follows the originally requested schema. Do not include Markdown fences or commentary.";
 
+function safeProviderErrorValue(value, apiKey) {
+  if (typeof value !== "string") return "";
+  let result = value.replace(/[\u0000-\u001f\u007f]+/g, " ").trim();
+  if (apiKey) result = result.replaceAll(apiKey, "***");
+  return result.slice(0, 500);
+}
+
+async function modelHttpError(response, apiKey) {
+  let payload;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = undefined;
+  }
+
+  const details = [];
+  for (const [label, value] of [
+    ["code", payload?.error?.code],
+    ["parameter", payload?.error?.param],
+    ["request", response.headers?.get?.("x-request-id")],
+  ]) {
+    const safeValue = safeProviderErrorValue(value, apiKey);
+    if (safeValue) details.push(`${label}: ${safeValue}`);
+  }
+  const suffix = details.length ? ` (${details.join(", ")})` : "";
+  const message = safeProviderErrorValue(payload?.error?.message, apiKey);
+  const explanation = message ? `: ${message}` : "";
+  return new Error(
+    `The model endpoint returned HTTP ${response.status}${suffix}${explanation}.`,
+  );
+}
+
 export class ChatCompletionsClient {
   constructor(options) {
     this.url = chatCompletionsUrl(options.baseUrl);
@@ -331,9 +363,7 @@ export class ChatCompletionsClient {
           signal: controller.signal,
         });
         if (!response.ok) {
-          throw new Error(
-            `The model endpoint returned HTTP ${response.status}.`,
-          );
+          throw await modelHttpError(response, this.apiKey);
         }
         const payload = await response.json();
         const content = messageText(payload?.choices?.[0]?.message?.content);
