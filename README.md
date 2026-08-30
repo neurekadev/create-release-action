@@ -35,7 +35,7 @@ release:
         fetch-depth: 0
         persist-credentials: false
     - name: Create Release
-      uses: neurekadev/create-release-action@1
+      uses: neurekadev/create-release-action@2
       with:
         github-token: ${{ github.token }}
         api-key: ${{ secrets.INFERENCE_API_KEY }}
@@ -48,7 +48,7 @@ Push a complete bare Semantic Version tag such as `1.4.0`. Do not prefix it with
 
 ## Usage
 
-The action defaults to OpenAI GPT-5.6 Luna with its highest currently supported Chat Completions reasoning effort, `xhigh`. The examples pin that provider tuple explicitly so published `@1` workflows use it even before the compatibility tag advances to a release containing these defaults. Change `base-url`, `model`, and `reasoning-effort` together for another OpenAI-compatible provider. Set `reasoning-effort: none` when an endpoint does not accept that parameter. `api-key` is optional, so local or otherwise unauthenticated endpoints work without an authorization header.
+The action defaults to OpenAI GPT-5.6 Luna with its highest currently supported Chat Completions reasoning effort, `xhigh`. The examples pin that provider tuple explicitly so published `@2` workflows use it consistently. Change `base-url`, `model`, and `reasoning-effort` together for another OpenAI-compatible provider. Set `reasoning-effort: none` when an endpoint does not accept that parameter. `api-key` is optional, so local or otherwise unauthenticated endpoints work without an authorization header.
 
 ### Regenerate Release Notes
 
@@ -91,7 +91,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Regenerate Release Notes
-        uses: neurekadev/create-release-action@1
+        uses: neurekadev/create-release-action@2
         with:
           github-token: ${{ github.token }}
           api-key: ${{ secrets.INFERENCE_API_KEY }}
@@ -161,7 +161,7 @@ The action masks `github-token` and `api-key`. It sends `api-key` only as an `Au
 
 ## Versioning
 
-Use `neurekadev/create-release-action@1` for compatible updates. Releases use exact bare SemVer tags such as `1.0.0`, with moving `1.0` and `1` compatibility tags. Pin a full commit SHA when you need an immutable action reference. Marketplace publication is intentionally deferred.
+Use `neurekadev/create-release-action@2` for compatible updates. Releases use exact bare SemVer tags such as `2.0.0`, with moving `2.0` and `2` compatibility tags. Pin a full commit SHA when you need an immutable action reference. Marketplace publication is intentionally deferred.
 
 ## Why Use Create Release Action?
 
