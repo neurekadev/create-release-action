@@ -16,11 +16,11 @@ inputs:
   base-url:
     description: Base URL or full chat completions URL for the OpenAI-compatible endpoint.
     required: false
-    default: https://api.deepseek.com
+    default: https://api.openai.com/v1
   model:
     description: Model used to generate release notes.
     required: false
-    default: deepseek-v4-flash
+    default: gpt-5.6-luna
   reasoning-effort:
     description: Reasoning effort, or none to omit the provider parameter.
     required: false

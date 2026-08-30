@@ -58,8 +58,8 @@ const CONTEXT_ONLY_BASENAMES = new Set([
 ]);
 
 export const DEFAULT_MODEL_CONFIGURATION = Object.freeze({
-  baseUrl: "https://api.deepseek.com",
-  model: "deepseek-v4-flash",
+  baseUrl: "https://api.openai.com/v1",
+  model: "gpt-5.6-luna",
   reasoningEffort: "max",
   maxChunk: 200000,
   timeoutSeconds: 300,

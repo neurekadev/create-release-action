@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import {
   ChatCompletionsClient,
+  DEFAULT_MODEL_CONFIGURATION,
   chatCompletionsUrl,
   comparisonChunks,
   comparisonSources,
@@ -37,10 +39,45 @@ function patch(path, body) {
 }
 
 describe("OpenAI-compatible chat completions", () => {
+  it("defaults metadata and runtime configuration to GPT-5.6 Luna at max effort", () => {
+    assert.deepEqual(DEFAULT_MODEL_CONFIGURATION, {
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-5.6-luna",
+      reasoningEffort: "max",
+      maxChunk: 200000,
+      timeoutSeconds: 300,
+    });
+    assert.equal(
+      chatCompletionsUrl(DEFAULT_MODEL_CONFIGURATION.baseUrl),
+      "https://api.openai.com/v1/chat/completions",
+    );
+
+    const metadata = readFileSync(
+      new URL("../../action.yaml", import.meta.url),
+      "utf8",
+    );
+    const inputDefaults = Object.fromEntries(
+      [
+        ...metadata.matchAll(
+          /^  ([a-z][a-z-]+):\n(?:    .*\n)*?    default: (.+)$/gm,
+        ),
+      ].map(([, input, value]) => [input, value]),
+    );
+    assert.equal(
+      inputDefaults["base-url"],
+      DEFAULT_MODEL_CONFIGURATION.baseUrl,
+    );
+    assert.equal(inputDefaults.model, DEFAULT_MODEL_CONFIGURATION.model);
+    assert.equal(
+      inputDefaults["reasoning-effort"],
+      DEFAULT_MODEL_CONFIGURATION.reasoningEffort,
+    );
+  });
+
   it("normalizes base and full endpoint URLs", () => {
     assert.equal(
-      chatCompletionsUrl("https://api.deepseek.com/"),
-      "https://api.deepseek.com/chat/completions",
+      chatCompletionsUrl("https://api.openai.com/v1/"),
+      "https://api.openai.com/v1/chat/completions",
     );
     assert.equal(
       chatCompletionsUrl("https://example.test/v1/chat/completions"),

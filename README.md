@@ -39,13 +39,16 @@ release:
       with:
         github-token: ${{ github.token }}
         api-key: ${{ secrets.INFERENCE_API_KEY }}
+        base-url: https://api.openai.com/v1
+        model: gpt-5.6-luna
+        reasoning-effort: max
 ```
 
 Push a complete bare Semantic Version tag such as `1.4.0`. Do not prefix it with `v`.
 
 ## Usage
 
-The defaults use DeepSeek with maximum reasoning effort. Change `base-url`, `model`, and `reasoning-effort` for another OpenAI-compatible provider. Set `reasoning-effort: none` when an endpoint does not accept that parameter. `api-key` is optional, so local or otherwise unauthenticated endpoints work without an authorization header.
+The action defaults to OpenAI GPT-5.6 Luna with maximum reasoning effort. The examples pin that provider tuple explicitly so published `@1` workflows use it even before the compatibility tag advances to a release containing these defaults. Change `base-url`, `model`, and `reasoning-effort` together for another OpenAI-compatible provider. Set `reasoning-effort: none` when an endpoint does not accept that parameter. `api-key` is optional, so local or otherwise unauthenticated endpoints work without an authorization header.
 
 ### Regenerate Release Notes
 
@@ -92,6 +95,9 @@ jobs:
         with:
           github-token: ${{ github.token }}
           api-key: ${{ secrets.INFERENCE_API_KEY }}
+          base-url: https://api.openai.com/v1
+          model: gpt-5.6-luna
+          reasoning-effort: max
           release-tag: ${{ inputs.release-tag }}
           release-notes-audience: ${{ inputs.release-notes-audience }}
 ```
@@ -100,21 +106,21 @@ The selected published release is edited in place. Its tag, name, release ID, as
 
 ### Inputs
 
-| Input                    | Default                    | Purpose                                                                                            |
-| ------------------------ | -------------------------- | -------------------------------------------------------------------------------------------------- |
-| `github-token`           | Required                   | Creates, uploads, and publishes the GitHub Release.                                                |
-| `api-key`                | Empty                      | Optional bearer token for the model endpoint. Use the provider-neutral `INFERENCE_API_KEY` secret. |
-| `base-url`               | `https://api.deepseek.com` | Provider base URL or full `/chat/completions` URL.                                                 |
-| `model`                  | `deepseek-v4-flash`        | Provider model identifier.                                                                         |
-| `reasoning-effort`       | `max`                      | Provider reasoning effort; `none` omits the field.                                                 |
-| `release-tag`            | Empty                      | Existing published bare Semantic Version tag to regenerate during `workflow_dispatch`.             |
-| `release-notes-audience` | `end-user`                 | Note audience: `end-user`, `technical`, or `maintainer`.                                           |
-| `request-options`        | `{}`                       | Extra JSON merged into the chat completions request body.                                          |
-| `max-chunk`              | `200000`                   | Maximum comparison characters per analysis request.                                                |
-| `timeout`                | `300`                      | Timeout in seconds for each model request.                                                         |
-| `files`                  | Empty                      | Newline-separated asset paths or glob patterns used only when creating a release.                  |
-| `upstream-repository`    | `auto`                     | `owner/repository` used to resolve soft-fork upstream release notes.                               |
-| `upstream-tag`           | `auto`                     | Exact soft-fork upstream release tag when it cannot be inferred.                                   |
+| Input                    | Default                     | Purpose                                                                                            |
+| ------------------------ | --------------------------- | -------------------------------------------------------------------------------------------------- |
+| `github-token`           | Required                    | Creates, uploads, and publishes the GitHub Release.                                                |
+| `api-key`                | Empty                       | Optional bearer token for the model endpoint. Use the provider-neutral `INFERENCE_API_KEY` secret. |
+| `base-url`               | `https://api.openai.com/v1` | Provider base URL or full `/chat/completions` URL.                                                 |
+| `model`                  | `gpt-5.6-luna`              | Provider model identifier.                                                                         |
+| `reasoning-effort`       | `max`                       | Provider reasoning effort; `none` omits the field.                                                 |
+| `release-tag`            | Empty                       | Existing published bare Semantic Version tag to regenerate during `workflow_dispatch`.             |
+| `release-notes-audience` | `end-user`                  | Note audience: `end-user`, `technical`, or `maintainer`.                                           |
+| `request-options`        | `{}`                        | Extra JSON merged into the chat completions request body.                                          |
+| `max-chunk`              | `200000`                    | Maximum comparison characters per analysis request.                                                |
+| `timeout`                | `300`                       | Timeout in seconds for each model request.                                                         |
+| `files`                  | Empty                       | Newline-separated asset paths or glob patterns used only when creating a release.                  |
+| `upstream-repository`    | `auto`                      | `owner/repository` used to resolve soft-fork upstream release notes.                               |
+| `upstream-tag`           | `auto`                      | Exact soft-fork upstream release tag when it cannot be inferred.                                   |
 
 ### Outputs
 
