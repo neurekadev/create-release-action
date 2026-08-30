@@ -85,7 +85,6 @@ jobs:
       - name: Check Out Repository History
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.release-tag }}
           fetch-depth: 0
           persist-credentials: false
       - name: Regenerate Release Notes
