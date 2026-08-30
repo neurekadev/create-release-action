@@ -60,7 +60,7 @@ const CONTEXT_ONLY_BASENAMES = new Set([
 export const DEFAULT_MODEL_CONFIGURATION = Object.freeze({
   baseUrl: "https://api.openai.com/v1",
   model: "gpt-5.6-luna",
-  reasoningEffort: "max",
+  reasoningEffort: "xhigh",
   maxChunk: 200000,
   timeoutSeconds: 300,
 });

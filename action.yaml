@@ -24,7 +24,7 @@ inputs:
   reasoning-effort:
     description: Reasoning effort, or none to omit the provider parameter.
     required: false
-    default: max
+    default: xhigh
   release-tag:
     description: Existing bare Semantic Version release tag to regenerate during workflow_dispatch.
     required: false

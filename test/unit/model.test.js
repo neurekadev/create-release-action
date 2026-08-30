@@ -39,11 +39,11 @@ function patch(path, body) {
 }
 
 describe("OpenAI-compatible chat completions", () => {
-  it("defaults metadata and runtime configuration to GPT-5.6 Luna at max effort", () => {
+  it("defaults metadata and runtime configuration to GPT-5.6 Luna at xhigh effort", () => {
     assert.deepEqual(DEFAULT_MODEL_CONFIGURATION, {
       baseUrl: "https://api.openai.com/v1",
       model: "gpt-5.6-luna",
-      reasoningEffort: "max",
+      reasoningEffort: "xhigh",
       maxChunk: 200000,
       timeoutSeconds: 300,
     });

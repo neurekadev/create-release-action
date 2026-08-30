@@ -41,14 +41,14 @@ release:
         api-key: ${{ secrets.INFERENCE_API_KEY }}
         base-url: https://api.openai.com/v1
         model: gpt-5.6-luna
-        reasoning-effort: max
+        reasoning-effort: xhigh
 ```
 
 Push a complete bare Semantic Version tag such as `1.4.0`. Do not prefix it with `v`.
 
 ## Usage
 
-The action defaults to OpenAI GPT-5.6 Luna with maximum reasoning effort. The examples pin that provider tuple explicitly so published `@1` workflows use it even before the compatibility tag advances to a release containing these defaults. Change `base-url`, `model`, and `reasoning-effort` together for another OpenAI-compatible provider. Set `reasoning-effort: none` when an endpoint does not accept that parameter. `api-key` is optional, so local or otherwise unauthenticated endpoints work without an authorization header.
+The action defaults to OpenAI GPT-5.6 Luna with its highest currently supported Chat Completions reasoning effort, `xhigh`. The examples pin that provider tuple explicitly so published `@1` workflows use it even before the compatibility tag advances to a release containing these defaults. Change `base-url`, `model`, and `reasoning-effort` together for another OpenAI-compatible provider. Set `reasoning-effort: none` when an endpoint does not accept that parameter. `api-key` is optional, so local or otherwise unauthenticated endpoints work without an authorization header.
 
 ### Regenerate Release Notes
 
@@ -97,7 +97,7 @@ jobs:
           api-key: ${{ secrets.INFERENCE_API_KEY }}
           base-url: https://api.openai.com/v1
           model: gpt-5.6-luna
-          reasoning-effort: max
+          reasoning-effort: xhigh
           release-tag: ${{ inputs.release-tag }}
           release-notes-audience: ${{ inputs.release-notes-audience }}
 ```
@@ -112,7 +112,7 @@ The selected published release is edited in place. Its tag, name, release ID, as
 | `api-key`                | Empty                       | Optional bearer token for the model endpoint. Use the provider-neutral `INFERENCE_API_KEY` secret. |
 | `base-url`               | `https://api.openai.com/v1` | Provider base URL or full `/chat/completions` URL.                                                 |
 | `model`                  | `gpt-5.6-luna`              | Provider model identifier.                                                                         |
-| `reasoning-effort`       | `max`                       | Provider reasoning effort; `none` omits the field.                                                 |
+| `reasoning-effort`       | `xhigh`                     | Provider reasoning effort; `none` omits the field.                                                 |
 | `release-tag`            | Empty                       | Existing published bare Semantic Version tag to regenerate during `workflow_dispatch`.             |
 | `release-notes-audience` | `end-user`                  | Note audience: `end-user`, `technical`, or `maintainer`.                                           |
 | `request-options`        | `{}`                        | Extra JSON merged into the chat completions request body.                                          |
