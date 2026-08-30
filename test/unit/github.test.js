@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { selectBaseline } from "../../src/github.js";
+import { GitHubService, selectBaseline } from "../../src/github.js";
 
 describe("published release baseline", () => {
   it("selects the newest published release reachable from the tag commit", async () => {
@@ -19,5 +19,41 @@ describe("published release baseline", () => {
       result.reachable.map((release) => release.tag_name),
       ["1.1.0"],
     );
+  });
+
+  it("updates only the body of an existing release", async () => {
+    let parameters;
+    const expected = {
+      id: 42,
+      tag_name: "2.0.0",
+      name: "Custom release name",
+      body: "Replacement notes",
+      draft: false,
+      prerelease: false,
+      assets: [{ id: 7, name: "artifact.zip" }],
+    };
+    const service = new GitHubService(
+      {
+        rest: {
+          repos: {
+            updateRelease: async (received) => {
+              parameters = received;
+              return { data: expected };
+            },
+          },
+        },
+      },
+      "octo-org",
+      "example",
+    );
+
+    const release = await service.updateReleaseBody(42, "Replacement notes");
+    assert.equal(release, expected);
+    assert.deepEqual(parameters, {
+      owner: "octo-org",
+      repo: "example",
+      release_id: 42,
+      body: "Replacement notes",
+    });
   });
 });

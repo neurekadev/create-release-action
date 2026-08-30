@@ -74,6 +74,16 @@ export class GitHubService {
     return response.data;
   }
 
+  async updateReleaseBody(releaseId, body) {
+    const response = await this.octokit.rest.repos.updateRelease({
+      owner: this.owner,
+      repo: this.repo,
+      release_id: releaseId,
+      body,
+    });
+    return response.data;
+  }
+
   async getRelease(releaseId) {
     const response = await this.octokit.rest.repos.getRelease({
       owner: this.owner,
