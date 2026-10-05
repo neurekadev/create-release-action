@@ -33,7 +33,7 @@ async function main(env = process.env) {
   );
   const targetWorkspace = requiredEnvironment(env, "TARGET_WORKSPACE");
   const token = requiredEnvironment(env, "GITHUB_TOKEN");
-  const apiKey = requiredEnvironment(env, "INFERENCE_API_KEY");
+  const apiKey = env.MODEL_API_KEY?.trim() || "";
   const [owner, repo] = targetRepository.split("/");
   const octokit = githubModule.getOctokit(token);
   const github = new GitHubService(octokit, owner, repo);

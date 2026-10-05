@@ -37,6 +37,6 @@ jobs:
         uses: ./
         with:
           github-token: ${{ github.token }}
-          api-key: ${{ secrets.INFERENCE_API_KEY }}
+          api-key: ${{ secrets.MODEL_API_KEY }}
           release-tag: ${{ inputs.release-tag }}
           release-notes-audience: ${{ inputs.release-notes-audience }}

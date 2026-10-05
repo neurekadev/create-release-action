@@ -14,7 +14,7 @@ Publish GitHub Releases from bare Semantic Version tags with release notes gener
 
 ## Quickstart
 
-Add the release job to your existing `.github/workflows/CI.yaml` after its `lint`, `unit-tests`, and `build` jobs. Store the provider credential as the repository secret `INFERENCE_API_KEY`.
+Add the release job to your existing `.github/workflows/CI.yaml` after its `lint`, `unit-tests`, and `build` jobs. Store the provider credential as the repository secret `MODEL_API_KEY`.
 
 ```yaml
 release:
@@ -38,7 +38,7 @@ release:
       uses: neurekadev/create-release-action@2
       with:
         github-token: ${{ github.token }}
-        api-key: ${{ secrets.INFERENCE_API_KEY }}
+        api-key: ${{ secrets.MODEL_API_KEY }}
         base-url: https://api.openai.com/v1
         model: gpt-5.6-luna
         reasoning-effort: xhigh
@@ -94,7 +94,7 @@ jobs:
         uses: neurekadev/create-release-action@2
         with:
           github-token: ${{ github.token }}
-          api-key: ${{ secrets.INFERENCE_API_KEY }}
+          api-key: ${{ secrets.MODEL_API_KEY }}
           base-url: https://api.openai.com/v1
           model: gpt-5.6-luna
           reasoning-effort: xhigh
@@ -110,7 +110,7 @@ The selected published release is edited in place. Its tag, name, release ID, as
 | ------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------- |
 | `github-token`           | Required   | Creates, uploads, and publishes the GitHub Release.                                                           |
 | `api-format`             | `openai`   | API to call: `openai`, `openai-chat`, or `anthropic`. See [Model Providers](#model-providers).                |
-| `api-key`                | Empty      | Optional model API key. Use the provider-neutral `INFERENCE_API_KEY` secret.                                  |
+| `api-key`                | Empty      | Optional model API key. Use the provider-neutral `MODEL_API_KEY` secret.                                      |
 | `base-url`               | Empty      | Base URL as given to the official SDK; `https://api.openai.com/v1` or `https://api.anthropic.com` when empty. |
 | `model`                  | Empty      | Model identifier; `gpt-5.6-luna` or `claude-opus-5-5` when empty.                                             |
 | `reasoning-effort`       | `xhigh`    | Reasoning effort sent to the model; `none` leaves it out.                                                     |
