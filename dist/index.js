@@ -40278,6 +40278,43 @@ async function modelHttpError(response, apiKey) {
   );
 }
 
+const TRANSIENT_HTTP_STATUSES = new Set([
+  408, 409, 429, 500, 502, 503, 504, 529,
+]);
+const MAX_TRANSIENT_RETRIES = 3;
+const RETRY_BASE_DELAY_MILLISECONDS = 2000;
+const MAX_RETRY_DELAY_MILLISECONDS = 60_000;
+
+function defaultSleep(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function retryAfterMilliseconds(value) {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (/^\d+$/.test(trimmed)) return Number(trimmed) * 1000;
+  if (!/[a-z]/i.test(trimmed)) return undefined;
+  const date = Date.parse(trimmed);
+  if (Number.isNaN(date)) return undefined;
+  return Math.max(0, date - Date.now());
+}
+
+function transientRetryDelay(retry, response) {
+  const requested = retryAfterMilliseconds(
+    response?.headers?.get?.("retry-after"),
+  );
+  const delay = requested ?? RETRY_BASE_DELAY_MILLISECONDS * 2 ** retry;
+  return Math.min(delay, MAX_RETRY_DELAY_MILLISECONDS);
+}
+
+async function discardResponseBody(response) {
+  try {
+    await response.body?.cancel?.();
+  } catch {
+    // The body is not needed for a retried request.
+  }
+}
+
 class JsonModelClient {
   constructor(url, options) {
     this.url = url;
@@ -40287,53 +40324,50 @@ class JsonModelClient {
     this.requestOptions = options.requestOptions;
     this.timeoutMilliseconds = options.timeoutSeconds * 1000;
     this.fetch = options.fetchImpl || fetch;
+    this.sleep = options.sleep || defaultSleep;
   }
 
   get sendsReasoningEffort() {
     return Boolean(this.reasoningEffort) && this.reasoningEffort !== "none";
   }
 
-  async complete(messages) {
-    let requestMessages = messages;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+  // Sends one request, retrying temporary endpoint failures. Each attempt has
+  // its own timeout, which also covers reading the successful response.
+  async send(body, read) {
+    for (let retry = 0; ; retry += 1) {
       const controller = new AbortController();
       const timeout = setTimeout(
         () => controller.abort(),
         this.timeoutMilliseconds,
       );
+      let delay;
 
       try {
-        const response = await this.fetch(this.url, {
-          method: "POST",
-          headers: this.requestHeaders(),
-          body: JSON.stringify(this.requestBody(requestMessages)),
-          signal: controller.signal,
-        });
-        if (!response.ok) {
-          throw await modelHttpError(response, this.apiKey);
-        }
-        const content = this.responseText(await response.json());
-        if (!content.trim()) {
-          throw new Error(
-            "The model endpoint returned no assistant text content.",
-          );
-        }
+        let response;
         try {
-          return parseModelJson(content);
+          response = await this.fetch(this.url, {
+            method: "POST",
+            headers: this.requestHeaders(),
+            body,
+            signal: controller.signal,
+          });
         } catch (error) {
-          if (!(error instanceof InvalidModelJsonError)) {
+          if (error?.name === "AbortError" || retry >= MAX_TRANSIENT_RETRIES) {
             throw error;
           }
-          if (attempt > 0) {
-            throw new Error(
-              "The model response was not valid JSON after one retry.",
-            );
+          delay = transientRetryDelay(retry);
+        }
+
+        if (response) {
+          if (response.ok) return await read(response);
+          if (
+            !TRANSIENT_HTTP_STATUSES.has(response.status) ||
+            retry >= MAX_TRANSIENT_RETRIES
+          ) {
+            throw await modelHttpError(response, this.apiKey);
           }
-          requestMessages = [
-            ...messages,
-            { role: "assistant", content },
-            { role: "user", content: JSON_REPAIR_PROMPT },
-          ];
+          delay = transientRetryDelay(retry, response);
+          await discardResponseBody(response);
         }
       } catch (error) {
         if (error?.name === "AbortError") {
@@ -40344,6 +40378,43 @@ class JsonModelClient {
         throw error;
       } finally {
         clearTimeout(timeout);
+      }
+
+      await this.sleep(delay);
+    }
+  }
+
+  async complete(messages) {
+    let requestMessages = messages;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const content = await this.send(
+        JSON.stringify(this.requestBody(requestMessages)),
+        async (response) => {
+          const text = this.responseText(await response.json());
+          if (!text.trim()) {
+            throw new Error(
+              "The model endpoint returned no assistant text content.",
+            );
+          }
+          return text;
+        },
+      );
+      try {
+        return parseModelJson(content);
+      } catch (error) {
+        if (!(error instanceof InvalidModelJsonError)) {
+          throw error;
+        }
+        if (attempt > 0) {
+          throw new Error(
+            "The model response was not valid JSON after one retry.",
+          );
+        }
+        requestMessages = [
+          ...messages,
+          { role: "assistant", content },
+          { role: "user", content: JSON_REPAIR_PROMPT },
+        ];
       }
     }
 
