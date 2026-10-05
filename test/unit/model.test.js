@@ -757,6 +757,7 @@ describe("release-note audiences", () => {
         /Breaking Changes, Added, Changed, Deprecated, Removed, Fixed, Security/,
       );
       assert.match(policies.release, /One change per bullet/);
+      assert.match(policies.release, /each bullet on a single line/);
       assert.match(policies.release, /Be concrete/);
       assert.doesNotMatch(policies.release, /imperative, present-tense/);
     }

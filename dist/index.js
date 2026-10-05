@@ -39819,7 +39819,8 @@ const RELEASE_NOTE_SECTIONS = Object.freeze([
 const CATEGORIES = RELEASE_NOTE_SECTIONS.join("|");
 
 const SECTION_RULES = `Use only these Markdown sections, in this order, omitting empty sections: ${RELEASE_NOTE_SECTIONS.join(", ")}.
-Use a level-three heading for each section and '- ' bullets. Put each change in exactly one section; a breaking change appears only under Breaking Changes.`;
+Use a level-three heading for each section and '- ' bullets. Write each bullet on a single line; never use nested bullets, paragraphs, or line breaks inside a bullet.
+Put each change in exactly one section; a breaking change appears only under Breaking Changes.`;
 
 const BREAKING_RULES = `A breaking change is anything that can make the existing setup, integration, or habits of this audience's readers stop working or behave differently after upgrading unless they act: removed or renamed features, settings, inputs, outputs, commands, APIs, or environment variables; changed data or file formats; changed defaults; stricter requirements; and dropped platforms or compatibility.
 Commit markers such as 'feat!:', 'fix!:', or a 'BREAKING CHANGE:' footer are strong signals; confirm them against the diff when it is available.
