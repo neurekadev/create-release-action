@@ -63,7 +63,7 @@ export const MODEL_API_FORMATS = Object.freeze({
     model: "gpt-5.6-luna",
   }),
   anthropic: Object.freeze({
-    baseUrl: "https://api.anthropic.com/v1",
+    baseUrl: "https://api.anthropic.com",
     model: "claude-opus-5-5",
   }),
 });
@@ -102,7 +102,7 @@ export function chatCompletionsUrl(baseUrl) {
 }
 
 export function messagesUrl(baseUrl) {
-  return endpointUrl(baseUrl, "/messages");
+  return endpointUrl(baseUrl, "/v1/messages");
 }
 
 export function splitWithoutLoss(value, maximum) {

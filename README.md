@@ -52,7 +52,7 @@ The action defaults to OpenAI GPT-5.6 Luna with its highest currently supported 
 
 ### Anthropic-Compatible Endpoints
 
-Set `api-format: anthropic` to call a Messages endpoint instead. Without `base-url` and `model`, it uses `https://api.anthropic.com/v1` and `claude-opus-5-5`. The format is never guessed from the URL, so proxies that serve both `/v1/chat/completions` and `/v1/messages` from one base URL work with either format.
+Set `api-format: anthropic` to call a Messages endpoint instead. Without `base-url` and `model`, it uses `https://api.anthropic.com` and `claude-opus-5-5`. `base-url` follows the official SDKs: use the value you would set as `OPENAI_BASE_URL` for `openai` (the action appends the endpoint path) or `ANTHROPIC_BASE_URL` for `anthropic` (the action appends `/v1/messages`). A full endpoint URL is also accepted. The format is never guessed from the URL.
 
 ```yaml
 - name: Create Release
@@ -61,7 +61,7 @@ Set `api-format: anthropic` to call a Messages endpoint instead. Without `base-u
     github-token: ${{ github.token }}
     api-format: anthropic
     api-key: ${{ secrets.INFERENCE_API_KEY }}
-    base-url: https://api.anthropic.com/v1
+    base-url: https://api.anthropic.com
     model: claude-opus-5-5
     reasoning-effort: xhigh
 ```
@@ -129,7 +129,7 @@ The selected published release is edited in place. Its tag, name, release ID, as
 | `github-token`           | Required   | Creates, uploads, and publishes the GitHub Release.                                                                                         |
 | `api-format`             | `openai`   | Model API: `openai` for Chat Completions or `anthropic` for Messages.                                                                       |
 | `api-key`                | Empty      | Optional model endpoint credential. Use the provider-neutral `INFERENCE_API_KEY` secret.                                                    |
-| `base-url`               | Empty      | Provider base URL or full `/chat/completions` or `/messages` URL; `https://api.openai.com/v1` or `https://api.anthropic.com/v1` when empty. |
+| `base-url`               | Empty      | SDK-style base URL or full `/chat/completions` or `/v1/messages` URL; `https://api.openai.com/v1` or `https://api.anthropic.com` if absent. |
 | `model`                  | Empty      | Provider model identifier; `gpt-5.6-luna` or `claude-opus-5-5` when empty.                                                                  |
 | `reasoning-effort`       | `xhigh`    | Provider reasoning effort; `none` omits the field.                                                                                          |
 | `release-tag`            | Empty      | Existing published bare Semantic Version tag to regenerate during `workflow_dispatch`.                                                      |
