@@ -39935,17 +39935,26 @@ const CONTEXT_ONLY_DIRECTORIES = new Set([
   ".github",
   "__fixtures__",
   "__tests__",
-  "build",
-  "coverage",
-  "dist",
   "fixtures",
   "node_modules",
-  "spec",
-  "specs",
   "test",
   "tests",
   "third_party",
   "vendor",
+]);
+
+// Output directories are context-only unless they sit inside source code,
+// where a directory such as src/commands/build/ is product source.
+const GENERATED_OUTPUT_DIRECTORIES = new Set(["build", "coverage", "dist"]);
+
+const SOURCE_ROOT_DIRECTORIES = new Set([
+  "app",
+  "cmd",
+  "internal",
+  "lib",
+  "pkg",
+  "source",
+  "src",
 ]);
 
 const CONTEXT_ONLY_BASENAMES = new Set([
@@ -39958,7 +39967,6 @@ const CONTEXT_ONLY_BASENAMES = new Set([
   "bun.lockb",
   "cargo.lock",
   "composer.lock",
-  "dockerfile",
   "gemfile.lock",
   "go.sum",
   "makefile",
@@ -40074,10 +40082,25 @@ function isContextOnlyPath(value) {
   const parts = path.split("/").filter(Boolean);
   const basename = parts.at(-1) || "";
 
-  if (parts.some((part) => CONTEXT_ONLY_DIRECTORIES.has(part))) return true;
+  const directories = parts.slice(0, -1);
+  if (directories.some((part) => CONTEXT_ONLY_DIRECTORIES.has(part))) {
+    return true;
+  }
+  const output = directories.findIndex((part) =>
+    GENERATED_OUTPUT_DIRECTORIES.has(part),
+  );
+  if (
+    output >= 0 &&
+    !directories
+      .slice(0, output)
+      .some((part) => SOURCE_ROOT_DIRECTORIES.has(part))
+  ) {
+    return true;
+  }
   if (CONTEXT_ONLY_BASENAMES.has(basename)) return true;
   if (/\.(?:lock|min\.js|map)$/.test(basename)) return true;
-  if (/\.(?:test|spec)\.[^.]+$/.test(basename)) return true;
+  if (/[._](?:test|spec)\.[^.]+$/.test(basename)) return true;
+  if (/^test_.+\.py$/.test(basename)) return true;
   return /^(?:babel|eslint|rollup|vite|webpack)\.config\./.test(basename);
 }
 

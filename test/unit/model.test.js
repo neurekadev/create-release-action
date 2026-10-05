@@ -14,6 +14,7 @@ import {
   responsesUrl,
   comparisonChunks,
   comparisonSources,
+  isContextOnlyPath,
   generateReleaseNotes,
   parseModelJson,
   splitWithoutLoss,
@@ -776,6 +777,35 @@ describe("provenance-aware comparisons", () => {
         (source) => source.role === "primary",
       ),
     );
+  });
+
+  it("keeps public source, API specs, and container images as primary", () => {
+    for (const path of [
+      "src/commands/build/run.ts",
+      "packages/cli/src/dist/format.js",
+      "lib/coverage/report.rb",
+      "spec/openapi.yaml",
+      "specs/api.yaml",
+      "Dockerfile",
+      "docker/app/Dockerfile",
+      "build.gradle",
+    ]) {
+      assert.equal(isContextOnlyPath(path), false, path);
+    }
+    for (const path of [
+      "build/output.js",
+      "packages/cli/dist/index.js",
+      "coverage/lcov.info",
+      "spec/models/user_spec.rb",
+      "pkg/server/handler_test.go",
+      "tests/test_api.py",
+      "app/test_settings.py",
+      "src/run.spec.ts",
+      ".github/workflows/CI.yaml",
+      "Makefile",
+    ]) {
+      assert.equal(isContextOnlyPath(path), true, path);
+    }
   });
 
   it("repeats source provenance across fragments without losing raw content", () => {
