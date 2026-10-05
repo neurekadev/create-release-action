@@ -135,6 +135,7 @@ describe("OpenAI-compatible responses", () => {
         model: "ignored",
         stream: true,
         input: "ignored",
+        instructions: "ignored",
         text: { verbosity: "low" },
       },
       timeoutSeconds: 2,

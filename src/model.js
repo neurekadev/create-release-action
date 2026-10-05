@@ -460,6 +460,7 @@ export class ResponsesClient extends JsonModelClient {
     if (this.sendsReasoningEffort) {
       body.reasoning = { ...body.reasoning, effort: this.reasoningEffort };
     }
+    delete body.instructions;
     body.model = this.model;
     body.input = messages.map((message) =>
       message.role === "system" ? { ...message, role: "developer" } : message,
