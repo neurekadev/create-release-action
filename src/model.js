@@ -450,20 +450,20 @@ export class ResponsesClient extends JsonModelClient {
   }
 
   requestBody(messages) {
-    const { system, conversation } = splitSystemMessages(messages);
     const body = {
       model: this.model,
-      text: { format: { type: "json_object" } },
       store: false,
       ...this.requestOptions,
       stream: false,
     };
+    body.text = { format: { type: "json_object" }, ...body.text };
     if (this.sendsReasoningEffort) {
       body.reasoning = { ...body.reasoning, effort: this.reasoningEffort };
     }
-    if (system) body.instructions = system;
     body.model = this.model;
-    body.input = conversation;
+    body.input = messages.map((message) =>
+      message.role === "system" ? { ...message, role: "developer" } : message,
+    );
     return body;
   }
 

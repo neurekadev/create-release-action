@@ -123,7 +123,7 @@ describe("OpenAI-compatible responses", () => {
     assert.throws(() => responsesUrl("  "), /base-url cannot be empty/);
   });
 
-  it("uses optional bearer auth, instructions, and protected request fields", async () => {
+  it("uses optional bearer auth, developer policy, and protected request fields", async () => {
     let request;
     const client = new ResponsesClient({
       baseUrl: "https://example.test/v1",
@@ -135,7 +135,7 @@ describe("OpenAI-compatible responses", () => {
         model: "ignored",
         stream: true,
         input: "ignored",
-        instructions: "ignored",
+        text: { verbosity: "low" },
       },
       timeoutSeconds: 2,
       fetchImpl: async (url, options) => {
@@ -158,9 +158,15 @@ describe("OpenAI-compatible responses", () => {
     assert.equal(body.stream, false);
     assert.equal(body.store, false);
     assert.equal(body.temperature, 0.2);
-    assert.equal(body.instructions, "policy");
-    assert.deepEqual(body.input, [{ role: "user", content: "input" }]);
-    assert.deepEqual(body.text, { format: { type: "json_object" } });
+    assert.equal("instructions" in body, false);
+    assert.deepEqual(body.input, [
+      { role: "developer", content: "policy" },
+      { role: "user", content: "input" },
+    ]);
+    assert.deepEqual(body.text, {
+      format: { type: "json_object" },
+      verbosity: "low",
+    });
     assert.equal("reasoning" in body, false);
     assert.equal("messages" in body, false);
   });
@@ -172,7 +178,10 @@ describe("OpenAI-compatible responses", () => {
       apiKey: "",
       model: "model",
       reasoningEffort: "max",
-      requestOptions: { reasoning: { effort: "low", summary: "auto" } },
+      requestOptions: {
+        reasoning: { effort: "low", summary: "auto" },
+        text: { format: { type: "json_schema", name: "notes", schema: {} } },
+      },
       timeoutSeconds: 2,
       fetchImpl: async (_url, options) => {
         request = options;
@@ -186,7 +195,8 @@ describe("OpenAI-compatible responses", () => {
     const body = JSON.parse(request.body);
     assert.equal("authorization" in request.headers, false);
     assert.deepEqual(body.reasoning, { effort: "max", summary: "auto" });
-    assert.equal("instructions" in body, false);
+    assert.equal(body.text.format.type, "json_schema");
+    assert.deepEqual(body.input, [{ role: "user", content: "input" }]);
   });
 
   it("joins text parts from every assistant message", async () => {
@@ -342,8 +352,11 @@ describe("OpenAI-compatible responses", () => {
       },
     );
     assert.equal(requests.length, 2);
-    assert.equal(requests[1].instructions, "policy");
-    assert.deepEqual(requests[1].input.slice(0, 1), requests[0].input);
+    assert.deepEqual(requests[1].input.slice(0, 2), requests[0].input);
+    assert.deepEqual(requests[1].input[0], {
+      role: "developer",
+      content: "policy",
+    });
     assert.deepEqual(requests[1].input.at(-2), {
       role: "assistant",
       content: "This is not JSON.",
