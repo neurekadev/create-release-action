@@ -413,7 +413,7 @@ describe("action orchestration", () => {
           },
         },
       }),
-      /api-format must be one of: openai, anthropic/,
+      /api-format must be one of: openai, openai-chat, anthropic/,
     );
   });
 });

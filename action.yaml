@@ -11,17 +11,17 @@ inputs:
     description: GitHub token with contents write permission.
     required: true
   api-format:
-    description: Model API format; openai for Responses or anthropic for Messages.
+    description: Model API format; openai for Responses, openai-chat for Chat Completions, or anthropic for Messages.
     required: false
     default: openai
   api-key:
-    description: Optional model endpoint credential, sent as a bearer token for openai or x-api-key for anthropic.
+    description: Optional model endpoint credential, sent as a bearer token for openai and openai-chat or x-api-key for anthropic.
     required: false
   base-url:
-    description: Base URL as given to the official SDK; the action appends the endpoint path. Defaults to https://api.openai.com/v1 for openai or https://api.anthropic.com for anthropic.
+    description: Base URL as given to the official SDK; the action appends the endpoint path. Defaults to https://api.openai.com/v1 for openai and openai-chat or https://api.anthropic.com for anthropic.
     required: false
   model:
-    description: Model used to generate release notes; defaults to gpt-5.6-luna for openai or claude-opus-5-5 for anthropic.
+    description: Model used to generate release notes; defaults to gpt-5.6-luna for openai and openai-chat or claude-opus-5-5 for anthropic.
     required: false
   reasoning-effort:
     description: Reasoning effort, or none to omit the provider parameter.

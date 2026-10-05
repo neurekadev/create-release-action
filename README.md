@@ -109,7 +109,7 @@ The selected published release is edited in place. Its tag, name, release ID, as
 | Input                    | Default    | Purpose                                                                                                       |
 | ------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------- |
 | `github-token`           | Required   | Creates, uploads, and publishes the GitHub Release.                                                           |
-| `api-format`             | `openai`   | API to call: `openai` or `anthropic`. See [Model Providers](#model-providers).                                |
+| `api-format`             | `openai`   | API to call: `openai`, `openai-chat`, or `anthropic`. See [Model Providers](#model-providers).                |
 | `api-key`                | Empty      | Optional model API key. Use the provider-neutral `INFERENCE_API_KEY` secret.                                  |
 | `base-url`               | Empty      | Base URL as given to the official SDK; `https://api.openai.com/v1` or `https://api.anthropic.com` when empty. |
 | `model`                  | Empty      | Model identifier; `gpt-5.6-luna` or `claude-opus-5-5` when empty.                                             |
@@ -144,10 +144,11 @@ The selected published release is edited in place. Its tag, name, release ID, as
 
 Set `api-format` to the API your provider speaks, and `base-url` to the same base URL you would give that API's official SDK (`OPENAI_BASE_URL` or `ANTHROPIC_BASE_URL`). The action adds the endpoint path, exactly like the SDK.
 
-| `api-format`       | API                | Default `base-url`          | Requests go to           | `api-key` is sent as    |
-| ------------------ | ------------------ | --------------------------- | ------------------------ | ----------------------- |
-| `openai` (default) | OpenAI Responses   | `https://api.openai.com/v1` | `<base-url>/responses`   | `Authorization: Bearer` |
-| `anthropic`        | Anthropic Messages | `https://api.anthropic.com` | `<base-url>/v1/messages` | `x-api-key`             |
+| `api-format`       | API                     | Default `base-url`          | Requests go to                | `api-key` is sent as    |
+| ------------------ | ----------------------- | --------------------------- | ----------------------------- | ----------------------- |
+| `openai` (default) | OpenAI Responses        | `https://api.openai.com/v1` | `<base-url>/responses`        | `Authorization: Bearer` |
+| `openai-chat`      | OpenAI Chat Completions | `https://api.openai.com/v1` | `<base-url>/chat/completions` | `Authorization: Bearer` |
+| `anthropic`        | Anthropic Messages      | `https://api.anthropic.com` | `<base-url>/v1/messages`      | `x-api-key`             |
 
 Each example replaces the model inputs (`base-url`, `model`, `reasoning-effort`) in the Quickstart step.
 
@@ -162,9 +163,10 @@ model: claude-opus-5-5
 reasoning-effort: xhigh
 ```
 
-**Provider or proxy with the OpenAI Responses API**
+**OpenAI-compatible provider or proxy**
 
 ```yaml
+api-format: openai-chat # or openai if it supports the Responses API
 base-url: https://llm.example.com/v1
 model: provider-model-id
 reasoning-effort: high # or none if the provider has no reasoning setting
@@ -179,7 +181,7 @@ model: provider-model-id
 reasoning-effort: high # or none if the provider has no effort setting
 ```
 
-- `reasoning-effort` is sent as `reasoning.effort` for `openai` and `output_config.effort` for `anthropic`.
+- `reasoning-effort` is sent as `reasoning.effort` for `openai`, `reasoning_effort` for `openai-chat`, and `output_config.effort` for `anthropic`.
 - `openai` requests set `store: false`, so OpenAI does not keep the generated responses.
 - Anthropic requests allow 32000 output tokens. Raise the limit with `request-options: '{"max_tokens": 64000}'`.
 - Leave `api-key` empty for endpoints that need no authentication.
