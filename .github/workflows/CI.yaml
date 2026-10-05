@@ -129,6 +129,7 @@ jobs:
           newest() {
             git tag --list "$1.*" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1
           }
+          git fetch --force --tags --quiet origin
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           aliases=()
