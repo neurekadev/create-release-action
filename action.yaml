@@ -18,7 +18,7 @@ inputs:
     description: Optional model endpoint credential, sent as a bearer token for openai or x-api-key for anthropic.
     required: false
   base-url:
-    description: Base URL or full endpoint URL; use the OpenAI SDK form (https://api.openai.com/v1) for openai or the Anthropic SDK form (https://api.anthropic.com) for anthropic.
+    description: Base URL as given to the official SDK; the action appends the endpoint path. Defaults to https://api.openai.com/v1 for openai or https://api.anthropic.com for anthropic.
     required: false
   model:
     description: Model used to generate release notes; defaults to gpt-5.6-luna for openai or claude-opus-5-5 for anthropic.

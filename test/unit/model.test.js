@@ -92,15 +92,16 @@ describe("OpenAI-compatible chat completions", () => {
     }
   });
 
-  it("normalizes base and full endpoint URLs", () => {
+  it("appends the SDK endpoint path to the base URL", () => {
     assert.equal(
       chatCompletionsUrl("https://api.openai.com/v1/"),
       "https://api.openai.com/v1/chat/completions",
     );
     assert.equal(
-      chatCompletionsUrl("https://example.test/v1/chat/completions"),
-      "https://example.test/v1/chat/completions",
+      chatCompletionsUrl(" https://example.test/api/v1 "),
+      "https://example.test/api/v1/chat/completions",
     );
+    assert.throws(() => chatCompletionsUrl("  "), /base-url cannot be empty/);
   });
 
   it("uses optional bearer auth and keeps protected request fields", async () => {
@@ -290,7 +291,7 @@ describe("Anthropic-compatible messages", () => {
     };
   }
 
-  it("normalizes base and full endpoint URLs", () => {
+  it("appends the SDK endpoint path to the base URL", () => {
     assert.equal(
       messagesUrl("https://api.anthropic.com/"),
       "https://api.anthropic.com/v1/messages",
@@ -298,10 +299,6 @@ describe("Anthropic-compatible messages", () => {
     assert.equal(
       messagesUrl("https://example.test/proxy"),
       "https://example.test/proxy/v1/messages",
-    );
-    assert.equal(
-      messagesUrl("http://localhost:8317/v1/messages"),
-      "http://localhost:8317/v1/messages",
     );
     assert.throws(() => messagesUrl("  "), /base-url cannot be empty/);
   });

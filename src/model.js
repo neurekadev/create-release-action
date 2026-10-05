@@ -94,7 +94,7 @@ function endpointUrl(baseUrl, path) {
   if (!trimmed) {
     throw new Error("base-url cannot be empty.");
   }
-  return trimmed.endsWith(path) ? trimmed : `${trimmed}${path}`;
+  return `${trimmed}${path}`;
 }
 
 export function chatCompletionsUrl(baseUrl) {
