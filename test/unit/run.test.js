@@ -357,7 +357,7 @@ describe("action orchestration", () => {
         { "api-format": "anthropic", "base-url": "", model: "" },
         {
           apiFormat: "anthropic",
-          baseUrl: "https://api.anthropic.com/v1",
+          baseUrl: "https://api.anthropic.com",
           model: "claude-opus-5-5",
         },
       ],
