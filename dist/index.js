@@ -39780,7 +39780,24 @@ class GitHubService {
   }
 }
 
-async function selectBaseline(releases, currentTag, targetCommit, git) {
+function isBaselineCandidate(release, stableTarget) {
+  let version;
+  try {
+    version = parseSemVer(release.tag_name);
+  } catch {
+    return false;
+  }
+  return !stableTarget || (!isPrerelease(version) && !release.prerelease);
+}
+
+async function selectBaseline(
+  releases,
+  currentTag,
+  targetCommit,
+  git,
+  options = {},
+) {
+  const stableTarget = options.stable ?? true;
   const candidates = releases
     .filter((release) => !release.draft && release.tag_name !== currentTag)
     .sort(
@@ -39795,7 +39812,12 @@ async function selectBaseline(releases, currentTag, targetCommit, git) {
     if (await git.isAncestor(release.tag_name, targetCommit))
       reachable.push(release);
   }
-  return { baseline: reachable[0] || null, reachable };
+  return {
+    baseline:
+      reachable.find((release) => isBaselineCandidate(release, stableTarget)) ||
+      null,
+    reachable,
+  };
 }
 
 const RELEASE_NOTE_AUDIENCES = Object.freeze([
@@ -40916,6 +40938,7 @@ async function runAction(dependencies) {
     context.tag,
     targetCommit,
     git,
+    { stable: !isPrerelease(version) },
   );
   const history = analyzeForkHistory(reachable);
   const releaseMode = validateReleaseTransition(version, history);

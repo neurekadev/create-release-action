@@ -173,6 +173,7 @@ export async function runAction(dependencies) {
     context.tag,
     targetCommit,
     git,
+    { stable: !isPrerelease(version) },
   );
   const history = analyzeForkHistory(reachable);
   const releaseMode = validateReleaseTransition(version, history);

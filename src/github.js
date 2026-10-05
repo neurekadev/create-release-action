@@ -1,3 +1,5 @@
+import { isPrerelease, parseSemVer } from "./semver.js";
+
 export class GitHubService {
   constructor(octokit, owner, repo) {
     this.octokit = octokit;
@@ -102,7 +104,24 @@ export class GitHubService {
   }
 }
 
-export async function selectBaseline(releases, currentTag, targetCommit, git) {
+function isBaselineCandidate(release, stableTarget) {
+  let version;
+  try {
+    version = parseSemVer(release.tag_name);
+  } catch {
+    return false;
+  }
+  return !stableTarget || (!isPrerelease(version) && !release.prerelease);
+}
+
+export async function selectBaseline(
+  releases,
+  currentTag,
+  targetCommit,
+  git,
+  options = {},
+) {
+  const stableTarget = options.stable ?? true;
   const candidates = releases
     .filter((release) => !release.draft && release.tag_name !== currentTag)
     .sort(
@@ -117,5 +136,10 @@ export async function selectBaseline(releases, currentTag, targetCommit, git) {
     if (await git.isAncestor(release.tag_name, targetCommit))
       reachable.push(release);
   }
-  return { baseline: reachable[0] || null, reachable };
+  return {
+    baseline:
+      reachable.find((release) => isBaselineCandidate(release, stableTarget)) ||
+      null,
+    reachable,
+  };
 }
