@@ -40423,7 +40423,11 @@ class MessagesClient extends JsonModelClient {
         "The model response reached max_tokens before completing; raise max_tokens in request-options.",
       );
     }
-    return messageText(payload?.content);
+    const text = messageText(payload?.content);
+    if (!text.trim()) {
+      throw new Error("The model endpoint returned no assistant text content.");
+    }
+    return text;
   }
 }
 

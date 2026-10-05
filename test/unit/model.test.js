@@ -406,11 +406,13 @@ describe("Anthropic-compatible messages", () => {
     assert.match(requests[1].messages[2].content, /exactly one valid JSON/);
   });
 
-  it("fails clearly on refusals and truncated responses", async () => {
-    for (const [stopReason, pattern] of [
-      ["refusal", /declined the request/],
-      ["max_tokens", /raise max_tokens in request-options/],
+  it("fails clearly on refusals, truncated, and empty responses", async () => {
+    for (const [text, stopReason, pattern] of [
+      ['{"ok":', "refusal", /declined the request/],
+      ['{"ok":', "max_tokens", /raise max_tokens in request-options/],
+      ["", "end_turn", /no assistant text content/],
     ]) {
+      let requests = 0;
       const client = new MessagesClient({
         baseUrl: "https://example.test/v1",
         apiKey: "",
@@ -418,10 +420,13 @@ describe("Anthropic-compatible messages", () => {
         reasoningEffort: "none",
         requestOptions: {},
         timeoutSeconds: 2,
-        fetchImpl: async () =>
-          messagesResponse('{"ok":', { stop_reason: stopReason }),
+        fetchImpl: async () => {
+          requests += 1;
+          return messagesResponse(text, { stop_reason: stopReason });
+        },
       });
       await assert.rejects(client.complete([]), pattern);
+      assert.equal(requests, 1);
     }
   });
 
