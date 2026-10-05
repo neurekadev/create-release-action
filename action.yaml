@@ -11,7 +11,7 @@ inputs:
     description: GitHub token with contents write permission.
     required: true
   api-format:
-    description: Model API format; openai for Chat Completions or anthropic for Messages.
+    description: Model API format; openai for Responses or anthropic for Messages.
     required: false
     default: openai
   api-key:

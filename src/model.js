@@ -97,8 +97,8 @@ function endpointUrl(baseUrl, path) {
   return `${trimmed}${path}`;
 }
 
-export function chatCompletionsUrl(baseUrl) {
-  return endpointUrl(baseUrl, "/chat/completions");
+export function responsesUrl(baseUrl) {
+  return endpointUrl(baseUrl, "/responses");
 }
 
 export function messagesUrl(baseUrl) {
@@ -388,6 +388,11 @@ class JsonModelClient {
           throw await modelHttpError(response, this.apiKey);
         }
         const content = this.responseText(await response.json());
+        if (!content.trim()) {
+          throw new Error(
+            "The model endpoint returned no assistant text content.",
+          );
+        }
         try {
           return parseModelJson(content);
         } catch (error) {
@@ -421,9 +426,19 @@ class JsonModelClient {
   }
 }
 
-export class ChatCompletionsClient extends JsonModelClient {
+function splitSystemMessages(messages) {
+  return {
+    system: messages
+      .filter((message) => message.role === "system")
+      .map((message) => message.content)
+      .join("\n\n"),
+    conversation: messages.filter((message) => message.role !== "system"),
+  };
+}
+
+export class ResponsesClient extends JsonModelClient {
   constructor(options) {
-    super(chatCompletionsUrl(options.baseUrl), options);
+    super(responsesUrl(options.baseUrl), options);
   }
 
   requestHeaders() {
@@ -437,21 +452,58 @@ export class ChatCompletionsClient extends JsonModelClient {
   requestBody(messages) {
     const body = {
       model: this.model,
-      messages,
-      response_format: { type: "json_object" },
+      store: false,
       ...this.requestOptions,
       stream: false,
     };
+    body.text = { format: { type: "json_object" }, ...body.text };
     if (this.sendsReasoningEffort) {
-      body.reasoning_effort = this.reasoningEffort;
+      body.reasoning = { ...body.reasoning, effort: this.reasoningEffort };
     }
+    delete body.instructions;
     body.model = this.model;
-    body.messages = messages;
+    body.input = messages.map((message) =>
+      message.role === "system" ? { ...message, role: "developer" } : message,
+    );
     return body;
   }
 
   responseText(payload) {
-    return messageText(payload?.choices?.[0]?.message?.content);
+    if (payload?.status === "incomplete") {
+      const reason = safeProviderErrorValue(
+        payload.incomplete_details?.reason,
+        this.apiKey,
+      );
+      if (reason === "max_output_tokens") {
+        throw new Error(
+          "The model response reached max_output_tokens before completing; raise max_output_tokens in request-options.",
+        );
+      }
+      throw new Error(
+        `The model response was incomplete${reason ? ` (reason: ${reason})` : ""}.`,
+      );
+    }
+    if (payload?.status === "failed") {
+      const message = safeProviderErrorValue(
+        payload.error?.message,
+        this.apiKey,
+      );
+      throw new Error(
+        `The model response failed${message ? `: ${message}` : ""}.`,
+      );
+    }
+    const parts = (Array.isArray(payload?.output) ? payload.output : [])
+      .filter((item) => item?.type === "message")
+      .flatMap((item) => (Array.isArray(item.content) ? item.content : []));
+    if (parts.some((part) => part?.type === "refusal")) {
+      throw new Error("The model declined the request (refusal).");
+    }
+    return parts
+      .filter(
+        (part) => part?.type === "output_text" && typeof part.text === "string",
+      )
+      .map((part) => part.text)
+      .join("");
   }
 }
 
@@ -472,13 +524,7 @@ export class MessagesClient extends JsonModelClient {
   }
 
   requestBody(messages) {
-    const system = messages
-      .filter((message) => message.role === "system")
-      .map((message) => message.content)
-      .join("\n\n");
-    const conversation = messages.filter(
-      (message) => message.role !== "system",
-    );
+    const { system, conversation } = splitSystemMessages(messages);
     const body = {
       model: this.model,
       max_tokens: MESSAGES_MAX_TOKENS,
@@ -506,16 +552,12 @@ export class MessagesClient extends JsonModelClient {
         "The model response reached max_tokens before completing; raise max_tokens in request-options.",
       );
     }
-    const text = messageText(payload?.content);
-    if (!text.trim()) {
-      throw new Error("The model endpoint returned no assistant text content.");
-    }
-    return text;
+    return messageText(payload?.content);
   }
 }
 
 const MODEL_CLIENTS = Object.freeze({
-  openai: ChatCompletionsClient,
+  openai: ResponsesClient,
   anthropic: MessagesClient,
 });
 

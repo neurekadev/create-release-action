@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import {
-  ChatCompletionsClient,
   DEFAULT_MODEL_CONFIGURATION,
   MODEL_API_FORMATS,
   MessagesClient,
-  chatCompletionsUrl,
+  ResponsesClient,
   createModelClient,
   messagesUrl,
   modelApiFormat,
+  responsesUrl,
   comparisonChunks,
   comparisonSources,
   generateReleaseNotes,
@@ -43,7 +43,26 @@ function patch(path, body) {
   ].join("\n");
 }
 
-describe("OpenAI-compatible chat completions", () => {
+function responsesPayload(text, overrides = {}) {
+  return {
+    status: "completed",
+    output: [
+      { type: "reasoning", summary: [] },
+      {
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text, annotations: [] }],
+      },
+    ],
+    ...overrides,
+  };
+}
+
+function responsesResponse(text, overrides) {
+  return { ok: true, json: async () => responsesPayload(text, overrides) };
+}
+
+describe("OpenAI-compatible responses", () => {
   it("defaults metadata and runtime configuration to GPT-5.6 Luna at xhigh effort", () => {
     assert.deepEqual(DEFAULT_MODEL_CONFIGURATION, {
       apiFormat: "openai",
@@ -58,8 +77,8 @@ describe("OpenAI-compatible chat completions", () => {
       model: "claude-opus-5-5",
     });
     assert.equal(
-      chatCompletionsUrl(DEFAULT_MODEL_CONFIGURATION.baseUrl),
-      "https://api.openai.com/v1/chat/completions",
+      responsesUrl(DEFAULT_MODEL_CONFIGURATION.baseUrl),
+      "https://api.openai.com/v1/responses",
     );
 
     const metadata = readFileSync(
@@ -94,78 +113,182 @@ describe("OpenAI-compatible chat completions", () => {
 
   it("appends the SDK endpoint path to the base URL", () => {
     assert.equal(
-      chatCompletionsUrl("https://api.openai.com/v1/"),
-      "https://api.openai.com/v1/chat/completions",
+      responsesUrl("https://api.openai.com/v1/"),
+      "https://api.openai.com/v1/responses",
     );
     assert.equal(
-      chatCompletionsUrl(" https://example.test/api/v1 "),
-      "https://example.test/api/v1/chat/completions",
+      responsesUrl(" https://example.test/api/v1 "),
+      "https://example.test/api/v1/responses",
     );
-    assert.throws(() => chatCompletionsUrl("  "), /base-url cannot be empty/);
+    assert.throws(() => responsesUrl("  "), /base-url cannot be empty/);
   });
 
-  it("uses optional bearer auth and keeps protected request fields", async () => {
+  it("uses optional bearer auth, developer policy, and protected request fields", async () => {
     let request;
-    const client = new ChatCompletionsClient({
+    const client = new ResponsesClient({
       baseUrl: "https://example.test/v1",
       apiKey: "secret-value",
       model: "custom-model",
       reasoningEffort: "none",
-      requestOptions: { temperature: 0.2, model: "ignored", stream: true },
+      requestOptions: {
+        temperature: 0.2,
+        model: "ignored",
+        stream: true,
+        input: "ignored",
+        instructions: "ignored",
+        text: { verbosity: "low" },
+      },
       timeoutSeconds: 2,
       fetchImpl: async (url, options) => {
         request = { url, options };
-        return {
-          ok: true,
-          json: async () => ({
-            choices: [
-              {
-                message: {
-                  content: '{"has_release_changes":false,"notes":""}',
-                },
-              },
-            ],
-          }),
-        };
+        return responsesResponse('{"has_release_changes":false,"notes":""}');
       },
     });
 
-    await client.complete([{ role: "user", content: "input" }]);
+    assert.deepEqual(
+      await client.complete([
+        { role: "system", content: "policy" },
+        { role: "user", content: "input" },
+      ]),
+      { has_release_changes: false, notes: "" },
+    );
     const body = JSON.parse(request.options.body);
-    assert.equal(request.url, "https://example.test/v1/chat/completions");
+    assert.equal(request.url, "https://example.test/v1/responses");
     assert.equal(request.options.headers.authorization, "Bearer secret-value");
     assert.equal(body.model, "custom-model");
     assert.equal(body.stream, false);
+    assert.equal(body.store, false);
     assert.equal(body.temperature, 0.2);
-    assert.equal("reasoning_effort" in body, false);
+    assert.equal("instructions" in body, false);
+    assert.deepEqual(body.input, [
+      { role: "developer", content: "policy" },
+      { role: "user", content: "input" },
+    ]);
+    assert.deepEqual(body.text, {
+      format: { type: "json_object" },
+      verbosity: "low",
+    });
+    assert.equal("reasoning" in body, false);
+    assert.equal("messages" in body, false);
   });
 
   it("supports endpoints without authentication and sends max reasoning", async () => {
     let request;
-    const client = new ChatCompletionsClient({
+    const client = new ResponsesClient({
       baseUrl: "https://example.test",
       apiKey: "",
       model: "model",
       reasoningEffort: "max",
-      requestOptions: { reasoning_effort: "low" },
+      requestOptions: {
+        reasoning: { effort: "low", summary: "auto" },
+        text: { format: { type: "json_schema", name: "notes", schema: {} } },
+      },
       timeoutSeconds: 2,
       fetchImpl: async (_url, options) => {
         request = options;
-        return {
-          ok: true,
-          json: async () => ({
-            choices: [{ message: { content: '```json\n{"ok":true}\n```' } }],
-          }),
-        };
+        return responsesResponse('```json\n{"ok":true}\n```');
       },
     });
-    assert.deepEqual(await client.complete([]), { ok: true });
+    assert.deepEqual(
+      await client.complete([{ role: "user", content: "input" }]),
+      { ok: true },
+    );
+    const body = JSON.parse(request.body);
     assert.equal("authorization" in request.headers, false);
-    assert.equal(JSON.parse(request.body).reasoning_effort, "max");
+    assert.deepEqual(body.reasoning, { effort: "max", summary: "auto" });
+    assert.equal(body.text.format.type, "json_schema");
+    assert.deepEqual(body.input, [{ role: "user", content: "input" }]);
+  });
+
+  it("joins text parts from every assistant message", async () => {
+    const client = new ResponsesClient({
+      baseUrl: "https://example.test/v1",
+      apiKey: "",
+      model: "model",
+      reasoningEffort: "none",
+      requestOptions: {},
+      timeoutSeconds: 2,
+      fetchImpl: async () => ({
+        ok: true,
+        json: async () => ({
+          output: [
+            {
+              type: "message",
+              content: [{ type: "output_text", text: '{"ok":' }],
+            },
+            { type: "function_call", arguments: "ignored" },
+            {
+              type: "message",
+              content: [{ type: "output_text", text: "true}" }],
+            },
+          ],
+        }),
+      }),
+    });
+    assert.deepEqual(await client.complete([]), { ok: true });
+  });
+
+  it("fails clearly on refusals, incomplete, failed, and empty responses", async () => {
+    for (const [payload, pattern] of [
+      [
+        responsesPayload("", {
+          output: [
+            {
+              type: "message",
+              content: [{ type: "refusal", refusal: "no" }],
+            },
+          ],
+        }),
+        /declined the request/,
+      ],
+      [
+        responsesPayload('{"ok":', {
+          status: "incomplete",
+          incomplete_details: { reason: "max_output_tokens" },
+        }),
+        /raise max_output_tokens in request-options/,
+      ],
+      [
+        responsesPayload("", {
+          status: "incomplete",
+          incomplete_details: { reason: "content_filter" },
+        }),
+        /incomplete \(reason: content_filter\)/,
+      ],
+      [
+        responsesPayload("", {
+          status: "failed",
+          error: { code: "server_error", message: "secret-value broke" },
+        }),
+        /response failed: \*\*\* broke/,
+      ],
+      [responsesPayload(""), /no assistant text content/],
+      [{ output: [{ type: "reasoning" }] }, /no assistant text content/],
+    ]) {
+      let requests = 0;
+      const client = new ResponsesClient({
+        baseUrl: "https://example.test/v1",
+        apiKey: "secret-value",
+        model: "model",
+        reasoningEffort: "none",
+        requestOptions: {},
+        timeoutSeconds: 2,
+        fetchImpl: async () => {
+          requests += 1;
+          return { ok: true, json: async () => payload };
+        },
+      });
+      await assert.rejects(client.complete([]), (error) => {
+        assert.match(error.message, pattern);
+        assert.doesNotMatch(error.message, /secret-value/);
+        return true;
+      });
+      assert.equal(requests, 1);
+    }
   });
 
   it("reports sanitized provider error details without exposing the API key", async () => {
-    const client = new ChatCompletionsClient({
+    const client = new ResponsesClient({
       baseUrl: "https://example.test",
       apiKey: "secret-value",
       model: "model",
@@ -182,7 +305,7 @@ describe("OpenAI-compatible chat completions", () => {
           error: {
             code: "unsupported_parameter",
             message: "Unsupported secret-value\nconfiguration",
-            param: "reasoning_effort",
+            param: "reasoning.effort",
           },
         }),
       }),
@@ -191,7 +314,7 @@ describe("OpenAI-compatible chat completions", () => {
     await assert.rejects(client.complete([]), (error) => {
       assert.match(error.message, /HTTP 400/);
       assert.match(error.message, /code: unsupported_parameter/);
-      assert.match(error.message, /parameter: reasoning_effort/);
+      assert.match(error.message, /parameter: reasoning\.effort/);
       assert.match(error.message, /request: req_123/);
       assert.match(error.message, /Unsupported \*\*\* configuration/);
       assert.doesNotMatch(error.message, /secret-value/);
@@ -202,7 +325,7 @@ describe("OpenAI-compatible chat completions", () => {
 
   it("retries one malformed model response with a strict JSON repair prompt", async () => {
     const requests = [];
-    const client = new ChatCompletionsClient({
+    const client = new ResponsesClient({
       baseUrl: "https://example.test",
       apiKey: "",
       model: "model",
@@ -211,46 +334,43 @@ describe("OpenAI-compatible chat completions", () => {
       timeoutSeconds: 2,
       fetchImpl: async (_url, options) => {
         requests.push(JSON.parse(options.body));
-        return {
-          ok: true,
-          json: async () => ({
-            choices: [
-              {
-                message: {
-                  content:
-                    requests.length === 1
-                      ? "This is not JSON."
-                      : '{"has_release_changes":false,"notes":""}',
-                },
-              },
-            ],
-          }),
-        };
+        return responsesResponse(
+          requests.length === 1
+            ? "This is not JSON."
+            : '{"has_release_changes":false,"notes":""}',
+        );
       },
     });
 
     assert.deepEqual(
-      await client.complete([{ role: "user", content: "input" }]),
+      await client.complete([
+        { role: "system", content: "policy" },
+        { role: "user", content: "input" },
+      ]),
       {
         has_release_changes: false,
         notes: "",
       },
     );
     assert.equal(requests.length, 2);
-    assert.deepEqual(requests[1].messages.slice(0, 1), requests[0].messages);
-    assert.deepEqual(requests[1].messages.at(-2), {
+    assert.deepEqual(requests[1].input.slice(0, 2), requests[0].input);
+    assert.deepEqual(requests[1].input[0], {
+      role: "developer",
+      content: "policy",
+    });
+    assert.deepEqual(requests[1].input.at(-2), {
       role: "assistant",
       content: "This is not JSON.",
     });
     assert.match(
-      requests[1].messages.at(-1).content,
+      requests[1].input.at(-1).content,
       /exactly one valid JSON object/,
     );
   });
 
   it("fails after one JSON repair retry", async () => {
     let requests = 0;
-    const client = new ChatCompletionsClient({
+    const client = new ResponsesClient({
       baseUrl: "https://example.test",
       apiKey: "",
       model: "model",
@@ -259,12 +379,7 @@ describe("OpenAI-compatible chat completions", () => {
       timeoutSeconds: 2,
       fetchImpl: async () => {
         requests += 1;
-        return {
-          ok: true,
-          json: async () => ({
-            choices: [{ message: { content: "still not JSON" } }],
-          }),
-        };
+        return responsesResponse("still not JSON");
       },
     });
 
@@ -345,7 +460,7 @@ describe("Anthropic-compatible messages", () => {
       effort: "xhigh",
       task_budget: "kept",
     });
-    assert.equal("response_format" in body, false);
+    assert.equal("text" in body, false);
   });
 
   it("supports endpoints without authentication or effort", async () => {
@@ -476,7 +591,7 @@ describe("Anthropic-compatible messages", () => {
     };
     assert.ok(
       createModelClient({ ...options, apiFormat: "openai" }) instanceof
-        ChatCompletionsClient,
+        ResponsesClient,
     );
     assert.ok(
       createModelClient({ ...options, apiFormat: "anthropic" }) instanceof

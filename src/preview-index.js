@@ -2,7 +2,7 @@ import { appendFile, writeFile } from "node:fs/promises";
 import * as githubModule from "@actions/github";
 import { GitRepository } from "./git.js";
 import { GitHubService } from "./github.js";
-import { ChatCompletionsClient, DEFAULT_MODEL_CONFIGURATION } from "./model.js";
+import { DEFAULT_MODEL_CONFIGURATION, createModelClient } from "./model.js";
 import {
   generateReleaseNotesPreview,
   previewDocument,
@@ -38,7 +38,8 @@ async function main(env = process.env) {
   const octokit = githubModule.getOctokit(token);
   const github = new GitHubService(octokit, owner, repo);
   const git = new GitRepository(targetWorkspace);
-  const client = new ChatCompletionsClient({
+  const client = createModelClient({
+    apiFormat: DEFAULT_MODEL_CONFIGURATION.apiFormat,
     baseUrl: DEFAULT_MODEL_CONFIGURATION.baseUrl,
     apiKey,
     model: DEFAULT_MODEL_CONFIGURATION.model,
