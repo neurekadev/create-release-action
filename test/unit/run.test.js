@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { runAction } from "../../src/run.js";
 
 const DEFAULT_INPUTS = Object.freeze({
+  "api-format": "openai",
   "api-key": "model-token",
   "base-url": "https://api.example.test",
   files: "dist/*.zip",
@@ -348,5 +349,71 @@ describe("action orchestration", () => {
       assets: [{ name: "artifact.zip" }],
       makeLatest: "legacy",
     });
+  });
+
+  it("resolves model defaults from the explicit API format", async () => {
+    for (const [inputs, expected] of [
+      [
+        { "api-format": "anthropic", "base-url": "", model: "" },
+        {
+          apiFormat: "anthropic",
+          baseUrl: "https://api.anthropic.com/v1",
+          model: "claude-opus-5-5",
+        },
+      ],
+      [
+        { "base-url": "", model: "" },
+        {
+          apiFormat: "openai",
+          baseUrl: "https://api.openai.com/v1",
+          model: "gpt-5.6-luna",
+        },
+      ],
+      [
+        { "api-format": "anthropic" },
+        {
+          apiFormat: "anthropic",
+          baseUrl: "https://api.example.test",
+          model: "example-model",
+        },
+      ],
+    ]) {
+      let modelOptions;
+      await runAction({
+        core: coreStub(inputs),
+        env: pushEnvironment(),
+        githubService: {
+          listReleases: async () => [publishedRelease("1.0.0", 1)],
+        },
+        gitRepository: gitStub(),
+        createModelClient: (options) => {
+          modelOptions = options;
+          return {};
+        },
+        generateNotes: async () => ({
+          hasReleaseChanges: true,
+          notes: "### Added\n- New behavior.",
+        }),
+        resolveReleaseAssets: async () => [],
+        publishRelease: async () => publishedRelease("2.0.0", 2),
+      });
+      const { apiFormat, baseUrl, model } = modelOptions;
+      assert.deepEqual({ apiFormat, baseUrl, model }, expected);
+    }
+  });
+
+  it("rejects an unknown API format before contacting GitHub", async () => {
+    await assert.rejects(
+      runAction({
+        core: coreStub({ "api-format": "auto" }),
+        env: pushEnvironment(),
+        githubService: {
+          listReleases: async () => {
+            throw new Error("GitHub must not be contacted");
+          },
+        },
+      }),
+      /api-format must be one of: openai, anthropic/,
+    );
   });
 });

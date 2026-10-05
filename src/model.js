@@ -57,22 +57,52 @@ const CONTEXT_ONLY_BASENAMES = new Set([
   "yarn.lock",
 ]);
 
+export const MODEL_API_FORMATS = Object.freeze({
+  openai: Object.freeze({
+    baseUrl: "https://api.openai.com/v1",
+    model: "gpt-5.6-luna",
+  }),
+  anthropic: Object.freeze({
+    baseUrl: "https://api.anthropic.com/v1",
+    model: "claude-opus-5-5",
+  }),
+});
+
 export const DEFAULT_MODEL_CONFIGURATION = Object.freeze({
-  baseUrl: "https://api.openai.com/v1",
-  model: "gpt-5.6-luna",
+  apiFormat: "openai",
+  ...MODEL_API_FORMATS.openai,
   reasoningEffort: "xhigh",
   maxChunk: 200000,
   timeoutSeconds: 300,
 });
 
-export function chatCompletionsUrl(baseUrl) {
+const ANTHROPIC_VERSION = "2023-06-01";
+const MESSAGES_MAX_TOKENS = 32000;
+
+export function modelApiFormat(value) {
+  const format = value.trim();
+  if (!Object.hasOwn(MODEL_API_FORMATS, format)) {
+    throw new Error(
+      `api-format must be one of: ${Object.keys(MODEL_API_FORMATS).join(", ")}.`,
+    );
+  }
+  return format;
+}
+
+function endpointUrl(baseUrl, path) {
   const trimmed = baseUrl.trim().replace(/\/+$/, "");
   if (!trimmed) {
     throw new Error("base-url cannot be empty.");
   }
-  return trimmed.endsWith("/chat/completions")
-    ? trimmed
-    : `${trimmed}/chat/completions`;
+  return trimmed.endsWith(path) ? trimmed : `${trimmed}${path}`;
+}
+
+export function chatCompletionsUrl(baseUrl) {
+  return endpointUrl(baseUrl, "/chat/completions");
+}
+
+export function messagesUrl(baseUrl) {
+  return endpointUrl(baseUrl, "/messages");
 }
 
 export function splitWithoutLoss(value, maximum) {
@@ -304,8 +334,13 @@ async function modelHttpError(response, apiKey) {
   const details = [];
   for (const [label, value] of [
     ["code", payload?.error?.code],
+    ["type", payload?.error?.type],
     ["parameter", payload?.error?.param],
-    ["request", response.headers?.get?.("x-request-id")],
+    [
+      "request",
+      response.headers?.get?.("x-request-id") ||
+        response.headers?.get?.("request-id"),
+    ],
   ]) {
     const safeValue = safeProviderErrorValue(value, apiKey);
     if (safeValue) details.push(`${label}: ${safeValue}`);
@@ -318,9 +353,9 @@ async function modelHttpError(response, apiKey) {
   );
 }
 
-export class ChatCompletionsClient {
-  constructor(options) {
-    this.url = chatCompletionsUrl(options.baseUrl);
+class JsonModelClient {
+  constructor(url, options) {
+    this.url = url;
     this.apiKey = options.apiKey;
     this.model = options.model;
     this.reasoningEffort = options.reasoningEffort;
@@ -329,12 +364,11 @@ export class ChatCompletionsClient {
     this.fetch = options.fetchImpl || fetch;
   }
 
-  async complete(messages) {
-    const headers = { "content-type": "application/json" };
-    if (this.apiKey) {
-      headers.authorization = `Bearer ${this.apiKey}`;
-    }
+  get sendsReasoningEffort() {
+    return Boolean(this.reasoningEffort) && this.reasoningEffort !== "none";
+  }
 
+  async complete(messages) {
     let requestMessages = messages;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const controller = new AbortController();
@@ -342,31 +376,18 @@ export class ChatCompletionsClient {
         () => controller.abort(),
         this.timeoutMilliseconds,
       );
-      const body = {
-        model: this.model,
-        messages: requestMessages,
-        response_format: { type: "json_object" },
-        ...this.requestOptions,
-        stream: false,
-      };
-      if (this.reasoningEffort && this.reasoningEffort !== "none") {
-        body.reasoning_effort = this.reasoningEffort;
-      }
-      body.model = this.model;
-      body.messages = requestMessages;
 
       try {
         const response = await this.fetch(this.url, {
           method: "POST",
-          headers,
-          body: JSON.stringify(body),
+          headers: this.requestHeaders(),
+          body: JSON.stringify(this.requestBody(requestMessages)),
           signal: controller.signal,
         });
         if (!response.ok) {
           throw await modelHttpError(response, this.apiKey);
         }
-        const payload = await response.json();
-        const content = messageText(payload?.choices?.[0]?.message?.content);
+        const content = this.responseText(await response.json());
         try {
           return parseModelJson(content);
         } catch (error) {
@@ -398,6 +419,109 @@ export class ChatCompletionsClient {
 
     throw new Error("The model response could not be completed.");
   }
+}
+
+export class ChatCompletionsClient extends JsonModelClient {
+  constructor(options) {
+    super(chatCompletionsUrl(options.baseUrl), options);
+  }
+
+  requestHeaders() {
+    const headers = { "content-type": "application/json" };
+    if (this.apiKey) {
+      headers.authorization = `Bearer ${this.apiKey}`;
+    }
+    return headers;
+  }
+
+  requestBody(messages) {
+    const body = {
+      model: this.model,
+      messages,
+      response_format: { type: "json_object" },
+      ...this.requestOptions,
+      stream: false,
+    };
+    if (this.sendsReasoningEffort) {
+      body.reasoning_effort = this.reasoningEffort;
+    }
+    body.model = this.model;
+    body.messages = messages;
+    return body;
+  }
+
+  responseText(payload) {
+    return messageText(payload?.choices?.[0]?.message?.content);
+  }
+}
+
+export class MessagesClient extends JsonModelClient {
+  constructor(options) {
+    super(messagesUrl(options.baseUrl), options);
+  }
+
+  requestHeaders() {
+    const headers = {
+      "content-type": "application/json",
+      "anthropic-version": ANTHROPIC_VERSION,
+    };
+    if (this.apiKey) {
+      headers["x-api-key"] = this.apiKey;
+    }
+    return headers;
+  }
+
+  requestBody(messages) {
+    const system = messages
+      .filter((message) => message.role === "system")
+      .map((message) => message.content)
+      .join("\n\n");
+    const conversation = messages.filter(
+      (message) => message.role !== "system",
+    );
+    const body = {
+      model: this.model,
+      max_tokens: MESSAGES_MAX_TOKENS,
+      ...this.requestOptions,
+      stream: false,
+    };
+    if (this.sendsReasoningEffort) {
+      body.output_config = {
+        ...body.output_config,
+        effort: this.reasoningEffort,
+      };
+    }
+    if (system) body.system = system;
+    body.model = this.model;
+    body.messages = conversation;
+    return body;
+  }
+
+  responseText(payload) {
+    if (payload?.stop_reason === "refusal") {
+      throw new Error("The model declined the request (stop reason: refusal).");
+    }
+    if (payload?.stop_reason === "max_tokens") {
+      throw new Error(
+        "The model response reached max_tokens before completing; raise max_tokens in request-options.",
+      );
+    }
+    const text = messageText(payload?.content);
+    if (!text.trim()) {
+      throw new Error("The model endpoint returned no assistant text content.");
+    }
+    return text;
+  }
+}
+
+const MODEL_CLIENTS = Object.freeze({
+  openai: ChatCompletionsClient,
+  anthropic: MessagesClient,
+});
+
+export function createModelClient(options) {
+  const Client = MODEL_CLIENTS[modelApiFormat(options.apiFormat)];
+  return new Client(options);
 }
 
 function validateEvidenceItem(item, requireSourceRole) {

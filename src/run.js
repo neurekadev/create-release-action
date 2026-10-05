@@ -6,7 +6,12 @@ import {
 } from "./fork.js";
 import { GitRepository } from "./git.js";
 import { GitHubService, selectBaseline } from "./github.js";
-import { ChatCompletionsClient, generateReleaseNotes } from "./model.js";
+import {
+  MODEL_API_FORMATS,
+  createModelClient,
+  generateReleaseNotes,
+  modelApiFormat,
+} from "./model.js";
 import { releaseNoteAudience } from "./policy.js";
 import { publishReleaseTransaction } from "./release.js";
 import { isPrerelease, parseSemVer } from "./semver.js";
@@ -108,6 +113,9 @@ export async function runAction(dependencies) {
   const audience = releaseNoteAudience(
     core.getInput("release-notes-audience", { required: true }),
   );
+  const apiFormat = modelApiFormat(
+    core.getInput("api-format", { required: true }),
+  );
   const token = core.getInput("github-token", { required: true });
   const apiKey = core.getInput("api-key");
   core.setSecret(token);
@@ -186,17 +194,18 @@ export async function runAction(dependencies) {
     targetCommit,
   );
   const modelOptions = {
-    baseUrl: core.getInput("base-url", { required: true }),
+    apiFormat,
+    baseUrl: core.getInput("base-url") || MODEL_API_FORMATS[apiFormat].baseUrl,
     apiKey,
-    model: core.getInput("model", { required: true }),
+    model: core.getInput("model") || MODEL_API_FORMATS[apiFormat].model,
     reasoningEffort: core.getInput("reasoning-effort"),
     requestOptions: requestOptionsInput(core),
     timeoutSeconds: integerInput(core, "timeout", 1),
     fetchImpl,
   };
-  const model = dependencies.createModelClient
-    ? dependencies.createModelClient(modelOptions)
-    : new ChatCompletionsClient(modelOptions);
+  const model = (dependencies.createModelClient || createModelClient)(
+    modelOptions,
+  );
   const generateNotes = dependencies.generateNotes || generateReleaseNotes;
   const generated = await generateNotes(model, comparison, {
     version,

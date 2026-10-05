@@ -10,17 +10,19 @@ inputs:
   github-token:
     description: GitHub token with contents write permission.
     required: true
+  api-format:
+    description: Model API format; openai for Chat Completions or anthropic for Messages.
+    required: false
+    default: openai
   api-key:
-    description: Optional bearer token for the OpenAI-compatible endpoint.
+    description: Optional model endpoint credential, sent as a bearer token for openai or x-api-key for anthropic.
     required: false
   base-url:
-    description: Base URL or full chat completions URL for the OpenAI-compatible endpoint.
+    description: Base URL or full endpoint URL; defaults to https://api.openai.com/v1 for openai or https://api.anthropic.com/v1 for anthropic.
     required: false
-    default: https://api.openai.com/v1
   model:
-    description: Model used to generate release notes.
+    description: Model used to generate release notes; defaults to gpt-5.6-luna for openai or claude-opus-5-5 for anthropic.
     required: false
-    default: gpt-5.6-luna
   reasoning-effort:
     description: Reasoning effort, or none to omit the provider parameter.
     required: false
@@ -33,7 +35,7 @@ inputs:
     required: false
     default: end-user
   request-options:
-    description: JSON object merged into the chat completions request body.
+    description: JSON object merged into the model request body.
     required: false
     default: "{}"
   max-chunk:
