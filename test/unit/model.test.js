@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import {
+  ChatCompletionsClient,
   DEFAULT_MODEL_CONFIGURATION,
   MODEL_API_FORMATS,
   MessagesClient,
   ResponsesClient,
+  chatCompletionsUrl,
   createModelClient,
   messagesUrl,
   modelApiFormat,
@@ -391,6 +393,105 @@ describe("OpenAI-compatible responses", () => {
   });
 });
 
+describe("OpenAI-compatible chat completions", () => {
+  function chatClient(fetchImpl, overrides = {}) {
+    return new ChatCompletionsClient({
+      baseUrl: "https://example.test/v1",
+      apiKey: "secret-value",
+      model: "custom-model",
+      reasoningEffort: "xhigh",
+      requestOptions: {},
+      timeoutSeconds: 2,
+      fetchImpl,
+      ...overrides,
+    });
+  }
+
+  function chatResponse(message, finishReason = "stop") {
+    return {
+      ok: true,
+      json: async () => ({
+        choices: [{ message, finish_reason: finishReason }],
+      }),
+    };
+  }
+
+  it("normalizes base and full endpoint URLs", () => {
+    assert.equal(
+      chatCompletionsUrl("https://api.openai.com/v1/"),
+      "https://api.openai.com/v1/chat/completions",
+    );
+    assert.equal(
+      chatCompletionsUrl("https://example.test/v1/chat/completions"),
+      "https://example.test/v1/chat/completions",
+    );
+  });
+
+  it("sends bearer auth, JSON mode, effort, and protected fields", async () => {
+    let request;
+    const client = chatClient(
+      async (url, options) => {
+        request = { url, options };
+        return chatResponse({ content: '{"ok":true}' });
+      },
+      {
+        requestOptions: {
+          temperature: 0.2,
+          reasoning_effort: "low",
+          model: "ignored",
+          messages: "ignored",
+          stream: true,
+        },
+      },
+    );
+
+    const messages = [
+      { role: "system", content: "policy" },
+      { role: "user", content: "input" },
+    ];
+    assert.deepEqual(await client.complete(messages), { ok: true });
+    const body = JSON.parse(request.options.body);
+    assert.equal(request.url, "https://example.test/v1/chat/completions");
+    assert.equal(request.options.headers.authorization, "Bearer secret-value");
+    assert.equal(body.model, "custom-model");
+    assert.deepEqual(body.messages, messages);
+    assert.deepEqual(body.response_format, { type: "json_object" });
+    assert.equal(body.reasoning_effort, "xhigh");
+    assert.equal(body.temperature, 0.2);
+    assert.equal(body.stream, false);
+  });
+
+  it("omits auth and effort when they are not configured", async () => {
+    let request;
+    const client = chatClient(
+      async (_url, options) => {
+        request = options;
+        return chatResponse({ content: '{"ok":true}' });
+      },
+      { apiKey: "", reasoningEffort: "none" },
+    );
+    await client.complete([{ role: "user", content: "input" }]);
+    assert.equal("authorization" in request.headers, false);
+    assert.equal("reasoning_effort" in JSON.parse(request.body), false);
+  });
+
+  it("fails clearly on refusals, truncated, and empty responses", async () => {
+    for (const [message, finishReason, pattern] of [
+      [{ content: null, refusal: "no" }, "stop", /declined the request/],
+      [{ content: '{"ok":' }, "length", /raise max_completion_tokens/],
+      [{ content: null }, "stop", /no assistant text content/],
+    ]) {
+      let requests = 0;
+      const client = chatClient(async () => {
+        requests += 1;
+        return chatResponse(message, finishReason);
+      });
+      await assert.rejects(client.complete([]), pattern);
+      assert.equal(requests, 1);
+    }
+  });
+});
+
 describe("Anthropic-compatible messages", () => {
   function messagesResponse(text, overrides = {}) {
     return {
@@ -592,6 +693,10 @@ describe("Anthropic-compatible messages", () => {
     assert.ok(
       createModelClient({ ...options, apiFormat: "openai" }) instanceof
         ResponsesClient,
+    );
+    assert.ok(
+      createModelClient({ ...options, apiFormat: "openai-chat" }) instanceof
+        ChatCompletionsClient,
     );
     assert.ok(
       createModelClient({ ...options, apiFormat: "anthropic" }) instanceof

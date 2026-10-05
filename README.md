@@ -54,12 +54,13 @@ The action defaults to OpenAI GPT-5.6 Luna with `xhigh` reasoning effort. The ex
 
 `api-format` selects the API, and `base-url` takes the same value as that API's official SDK. The action never guesses the format from the URL.
 
-| `api-format`       | `base-url` (SDK equivalent and default)        | Request                     | `api-key` header        | `reasoning-effort` field |
-| ------------------ | ---------------------------------------------- | --------------------------- | ----------------------- | ------------------------ |
-| `openai` (default) | `OPENAI_BASE_URL`, `https://api.openai.com/v1` | `POST <base-url>/responses` | `Authorization: Bearer` | `reasoning.effort`       |
-| `anthropic`        | `https://api.anthropic.com/v1`                 | `POST <base-url>/messages`  | `x-api-key`             | `output_config.effort`   |
+| `api-format`       | `base-url` (SDK equivalent and default)        | Request                            | `api-key` header        | `reasoning-effort` field |
+| ------------------ | ---------------------------------------------- | ---------------------------------- | ----------------------- | ------------------------ |
+| `openai` (default) | `OPENAI_BASE_URL`, `https://api.openai.com/v1` | `POST <base-url>/responses`        | `Authorization: Bearer` | `reasoning.effort`       |
+| `openai-chat`      | `OPENAI_BASE_URL`, `https://api.openai.com/v1` | `POST <base-url>/chat/completions` | `Authorization: Bearer` | `reasoning_effort`       |
+| `anthropic`        | `https://api.anthropic.com/v1`                 | `POST <base-url>/messages`         | `x-api-key`             | `output_config.effort`   |
 
-A full endpoint URL is used unchanged. `api-key` is optional, so unauthenticated endpoints receive no credential header. Set `reasoning-effort: none` to omit the effort field. `request-options` merges extra fields into the request body; Anthropic requests default to 32000 output tokens, which `request-options: '{"max_tokens": 64000}'` raises. OpenAI requests set `store: false`, so the provider is asked not to keep responses.
+A full endpoint URL is used unchanged. `api-key` is optional, so unauthenticated endpoints receive no credential header. Set `reasoning-effort: none` to omit the effort field. `request-options` merges extra fields into the request body; Anthropic requests default to 32000 output tokens, which `request-options: '{"max_tokens": 64000}'` raises. Use `openai-chat` for models or endpoints that only implement Chat Completions. `openai` requests set `store: false`, so the provider is asked not to keep responses.
 
 ```yaml
 - name: Create Release
@@ -132,7 +133,7 @@ The selected published release is edited in place. Its tag, name, release ID, as
 | Input                    | Default    | Purpose                                                                                                                              |
 | ------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `github-token`           | Required   | Creates, uploads, and publishes the GitHub Release.                                                                                  |
-| `api-format`             | `openai`   | Model API: `openai` for Responses or `anthropic` for Messages.                                                                       |
+| `api-format`             | `openai`   | `openai` for Responses, `openai-chat` for Chat Completions, or `anthropic` for Messages.                                             |
 | `api-key`                | Empty      | Optional model endpoint credential. Use the provider-neutral `INFERENCE_API_KEY` secret.                                             |
 | `base-url`               | Empty      | Provider base URL or full `/responses` or `/messages` URL; `https://api.openai.com/v1` or `https://api.anthropic.com/v1` when empty. |
 | `model`                  | Empty      | Provider model identifier; `gpt-5.6-luna` or `claude-opus-5-5` when empty.                                                           |

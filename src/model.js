@@ -62,6 +62,10 @@ export const MODEL_API_FORMATS = Object.freeze({
     baseUrl: "https://api.openai.com/v1",
     model: "gpt-5.6-luna",
   }),
+  "openai-chat": Object.freeze({
+    baseUrl: "https://api.openai.com/v1",
+    model: "gpt-5.6-luna",
+  }),
   anthropic: Object.freeze({
     baseUrl: "https://api.anthropic.com/v1",
     model: "claude-opus-5-5",
@@ -95,6 +99,10 @@ function endpointUrl(baseUrl, path) {
     throw new Error("base-url cannot be empty.");
   }
   return trimmed.endsWith(path) ? trimmed : `${trimmed}${path}`;
+}
+
+export function chatCompletionsUrl(baseUrl) {
+  return endpointUrl(baseUrl, "/chat/completions");
 }
 
 export function responsesUrl(baseUrl) {
@@ -507,6 +515,48 @@ export class ResponsesClient extends JsonModelClient {
   }
 }
 
+export class ChatCompletionsClient extends JsonModelClient {
+  constructor(options) {
+    super(chatCompletionsUrl(options.baseUrl), options);
+  }
+
+  requestHeaders() {
+    const headers = { "content-type": "application/json" };
+    if (this.apiKey) {
+      headers.authorization = `Bearer ${this.apiKey}`;
+    }
+    return headers;
+  }
+
+  requestBody(messages) {
+    const body = {
+      model: this.model,
+      response_format: { type: "json_object" },
+      ...this.requestOptions,
+      stream: false,
+    };
+    if (this.sendsReasoningEffort) {
+      body.reasoning_effort = this.reasoningEffort;
+    }
+    body.model = this.model;
+    body.messages = messages;
+    return body;
+  }
+
+  responseText(payload) {
+    const choice = payload?.choices?.[0];
+    if (choice?.message?.refusal) {
+      throw new Error("The model declined the request (refusal).");
+    }
+    if (choice?.finish_reason === "length") {
+      throw new Error(
+        "The model response reached its token limit before completing; raise max_completion_tokens in request-options.",
+      );
+    }
+    return messageText(choice?.message?.content ?? "");
+  }
+}
+
 export class MessagesClient extends JsonModelClient {
   constructor(options) {
     super(messagesUrl(options.baseUrl), options);
@@ -558,6 +608,7 @@ export class MessagesClient extends JsonModelClient {
 
 const MODEL_CLIENTS = Object.freeze({
   openai: ResponsesClient,
+  "openai-chat": ChatCompletionsClient,
   anthropic: MessagesClient,
 });
 
