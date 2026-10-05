@@ -782,10 +782,11 @@ describe("provenance-aware comparisons", () => {
   it("keeps public source, API specs, and container images as primary", () => {
     for (const path of [
       "src/commands/build/run.ts",
-      "packages/cli/src/dist/format.js",
-      "lib/coverage/report.rb",
+      "lib/reports/coverage/summary.rb",
       "spec/openapi.yaml",
       "specs/api.yaml",
+      "spec/api/openapi_spec.json",
+      "src/experiments/ab_test.ts",
       "Dockerfile",
       "docker/app/Dockerfile",
       "build.gradle",
@@ -795,8 +796,13 @@ describe("provenance-aware comparisons", () => {
     for (const path of [
       "build/output.js",
       "packages/cli/dist/index.js",
+      "packages/lib/dist/index.js",
+      "app/build/outputs/apk/app.apk",
       "coverage/lcov.info",
       "spec/models/user_spec.rb",
+      "spec/spec_helper.rb",
+      "spec/support/helpers.js",
+      "lib/widget_test.dart",
       "pkg/server/handler_test.go",
       "tests/test_api.py",
       "app/test_settings.py",

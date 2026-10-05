@@ -26,9 +26,20 @@ const CONTEXT_ONLY_DIRECTORIES = new Set([
   "vendor",
 ]);
 
-// Output directories are context-only unless they sit inside source code,
-// where a directory such as src/commands/build/ is product source.
+// Output directories are context-only unless a source root sits above their
+// parent: src/commands/build/ is product source, while app/build/ and
+// packages/lib/dist/ are generated output.
 const GENERATED_OUTPUT_DIRECTORIES = new Set(["build", "coverage", "dist"]);
+
+// Spec directories hold tests, except for interface definitions such as
+// spec/openapi.yaml, which are public contracts.
+const SPEC_DIRECTORIES = new Set(["spec", "specs"]);
+const CONTRACT_FILE_PATTERN = /\.(?:graphql|gql|json|proto|ya?ml)$/;
+
+// The underscore test suffix is conventional only in these languages, so
+// product modules such as src/ab_test.ts stay primary.
+const UNDERSCORE_TEST_FILE_PATTERN =
+  /_(?:test|spec)\.(?:c|cc|cpp|dart|exs|go|py|rb|rs)$/;
 
 const SOURCE_ROOT_DIRECTORIES = new Set([
   "app",
@@ -169,20 +180,27 @@ export function isContextOnlyPath(value) {
   if (directories.some((part) => CONTEXT_ONLY_DIRECTORIES.has(part))) {
     return true;
   }
+  if (
+    directories.some((part) => SPEC_DIRECTORIES.has(part)) &&
+    !CONTRACT_FILE_PATTERN.test(basename)
+  ) {
+    return true;
+  }
   const output = directories.findIndex((part) =>
     GENERATED_OUTPUT_DIRECTORIES.has(part),
   );
   if (
     output >= 0 &&
     !directories
-      .slice(0, output)
+      .slice(0, Math.max(0, output - 1))
       .some((part) => SOURCE_ROOT_DIRECTORIES.has(part))
   ) {
     return true;
   }
   if (CONTEXT_ONLY_BASENAMES.has(basename)) return true;
   if (/\.(?:lock|min\.js|map)$/.test(basename)) return true;
-  if (/[._](?:test|spec)\.[^.]+$/.test(basename)) return true;
+  if (/\.(?:test|spec)\.[^.]+$/.test(basename)) return true;
+  if (UNDERSCORE_TEST_FILE_PATTERN.test(basename)) return true;
   if (/^test_.+\.py$/.test(basename)) return true;
   return /^(?:babel|eslint|rollup|vite|webpack)\.config\./.test(basename);
 }
