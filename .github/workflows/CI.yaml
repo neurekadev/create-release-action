@@ -118,6 +118,7 @@ jobs:
           base-url: https://agents.neureka.dev
           model: claude-opus-5-5
           reasoning-effort: high
+          release-notes-audience: technical
       - name: Update Compatibility Tags
         if: ${{ !contains(github.ref_name, '-') && !contains(github.ref_name, '+') }}
         env:
