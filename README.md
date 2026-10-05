@@ -48,11 +48,18 @@ Push a complete bare Semantic Version tag such as `1.4.0`. Do not prefix it with
 
 ## Usage
 
-The action defaults to OpenAI GPT-5.6 Luna with its highest currently supported Chat Completions reasoning effort, `xhigh`. The examples pin that provider tuple explicitly so published `@2` workflows use it consistently. Change `base-url`, `model`, and `reasoning-effort` together for another OpenAI-compatible provider. Set `reasoning-effort: none` when an endpoint does not accept that parameter. `api-key` is optional, so local or otherwise unauthenticated endpoints work without an authorization header.
+The action defaults to OpenAI GPT-5.6 Luna with `xhigh` reasoning effort. The examples pin that provider tuple explicitly so published workflows use it consistently. Change `api-format`, `base-url`, `model`, and `reasoning-effort` together for another provider.
 
-### Anthropic-Compatible Endpoints
+### Model Endpoints
 
-Set `api-format: anthropic` to call a Messages endpoint instead. Without `base-url` and `model`, it uses `https://api.anthropic.com` and `claude-opus-5-5`. `base-url` follows the official SDKs: use the value you would set as `OPENAI_BASE_URL` for `openai` (the action appends the endpoint path) or `ANTHROPIC_BASE_URL` for `anthropic` (the action appends `/v1/messages`). A full endpoint URL is also accepted. The format is never guessed from the URL.
+`api-format` selects the API, and `base-url` takes the same value as that API's official SDK. The action never guesses the format from the URL.
+
+| `api-format`       | `base-url` (SDK equivalent and default)           | Request                            | `api-key` header        | `reasoning-effort` field |
+| ------------------ | ------------------------------------------------- | ---------------------------------- | ----------------------- | ------------------------ |
+| `openai` (default) | `OPENAI_BASE_URL`, `https://api.openai.com/v1`    | `POST <base-url>/chat/completions` | `Authorization: Bearer` | `reasoning_effort`       |
+| `anthropic`        | `ANTHROPIC_BASE_URL`, `https://api.anthropic.com` | `POST <base-url>/v1/messages`      | `x-api-key`             | `output_config.effort`   |
+
+A full endpoint URL is used unchanged. `api-key` is optional, so unauthenticated endpoints receive no credential header. Set `reasoning-effort: none` to omit the effort field. `request-options` merges extra fields into the request body; Anthropic requests default to 32000 output tokens, which `request-options: '{"max_tokens": 64000}'` raises.
 
 ```yaml
 - name: Create Release
@@ -65,8 +72,6 @@ Set `api-format: anthropic` to call a Messages endpoint instead. Without `base-u
     model: claude-opus-5-5
     reasoning-effort: xhigh
 ```
-
-`reasoning-effort` is sent as `output_config.effort`. Each request allows up to 32000 output tokens; raise it with `request-options: '{"max_tokens": 64000}'` if a response is cut off, or lower it for models with smaller output limits.
 
 ### Regenerate Release Notes
 
