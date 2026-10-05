@@ -4,7 +4,12 @@ import { describe, it } from "node:test";
 import {
   ChatCompletionsClient,
   DEFAULT_MODEL_CONFIGURATION,
+  MODEL_API_FORMATS,
+  MessagesClient,
   chatCompletionsUrl,
+  createModelClient,
+  messagesUrl,
+  modelApiFormat,
   comparisonChunks,
   comparisonSources,
   generateReleaseNotes,
@@ -41,11 +46,16 @@ function patch(path, body) {
 describe("OpenAI-compatible chat completions", () => {
   it("defaults metadata and runtime configuration to GPT-5.6 Luna at xhigh effort", () => {
     assert.deepEqual(DEFAULT_MODEL_CONFIGURATION, {
+      apiFormat: "openai",
       baseUrl: "https://api.openai.com/v1",
       model: "gpt-5.6-luna",
       reasoningEffort: "xhigh",
       maxChunk: 200000,
       timeoutSeconds: 300,
+    });
+    assert.deepEqual(MODEL_API_FORMATS.anthropic, {
+      baseUrl: "https://api.anthropic.com/v1",
+      model: "claude-opus-5-5",
     });
     assert.equal(
       chatCompletionsUrl(DEFAULT_MODEL_CONFIGURATION.baseUrl),
@@ -56,22 +66,30 @@ describe("OpenAI-compatible chat completions", () => {
       new URL("../../action.yaml", import.meta.url),
       "utf8",
     );
-    const inputDefaults = Object.fromEntries(
-      [
-        ...metadata.matchAll(
-          /^  ([a-z][a-z-]+):\n(?:    .*\n)*?    default: (.+)$/gm,
-        ),
-      ].map(([, input, value]) => [input, value]),
+    const inputs = Object.fromEntries(
+      [...metadata.matchAll(/^  ([a-z][a-z-]+):\n((?:    .*\n)*)/gm)].map(
+        ([, input, body]) => [input, body],
+      ),
+    );
+    const inputDefault = (input) =>
+      inputs[input].match(/^    default: (.+)$/m)?.[1];
+    assert.equal(
+      inputDefault("api-format"),
+      DEFAULT_MODEL_CONFIGURATION.apiFormat,
     );
     assert.equal(
-      inputDefaults["base-url"],
-      DEFAULT_MODEL_CONFIGURATION.baseUrl,
-    );
-    assert.equal(inputDefaults.model, DEFAULT_MODEL_CONFIGURATION.model);
-    assert.equal(
-      inputDefaults["reasoning-effort"],
+      inputDefault("reasoning-effort"),
       DEFAULT_MODEL_CONFIGURATION.reasoningEffort,
     );
+    for (const [input, field] of [
+      ["base-url", "baseUrl"],
+      ["model", "model"],
+    ]) {
+      assert.equal(inputDefault(input), undefined);
+      for (const defaults of Object.values(MODEL_API_FORMATS)) {
+        assert.ok(inputs[input].includes(defaults[field]));
+      }
+    }
   });
 
   it("normalizes base and full endpoint URLs", () => {
@@ -254,6 +272,214 @@ describe("OpenAI-compatible chat completions", () => {
       /not valid JSON after one retry/,
     );
     assert.equal(requests, 2);
+  });
+});
+
+describe("Anthropic-compatible messages", () => {
+  function messagesResponse(text, overrides = {}) {
+    return {
+      ok: true,
+      json: async () => ({
+        content: [
+          { type: "thinking", thinking: "" },
+          { type: "text", text },
+        ],
+        stop_reason: "end_turn",
+        ...overrides,
+      }),
+    };
+  }
+
+  it("normalizes base and full endpoint URLs", () => {
+    assert.equal(
+      messagesUrl("https://api.anthropic.com/v1/"),
+      "https://api.anthropic.com/v1/messages",
+    );
+    assert.equal(
+      messagesUrl("http://localhost:8317/v1/messages"),
+      "http://localhost:8317/v1/messages",
+    );
+    assert.throws(() => messagesUrl("  "), /base-url cannot be empty/);
+  });
+
+  it("sends x-api-key auth, a top-level system prompt, and effort", async () => {
+    let request;
+    const client = new MessagesClient({
+      baseUrl: "https://example.test/v1",
+      apiKey: "secret-value",
+      model: "claude-model",
+      reasoningEffort: "xhigh",
+      requestOptions: {
+        max_tokens: 64000,
+        output_config: { effort: "low", task_budget: "kept" },
+        system: "ignored",
+        model: "ignored",
+        stream: true,
+      },
+      timeoutSeconds: 2,
+      fetchImpl: async (url, options) => {
+        request = { url, options };
+        return messagesResponse('{"has_release_changes":false,"notes":""}');
+      },
+    });
+
+    assert.deepEqual(
+      await client.complete([
+        { role: "system", content: "policy" },
+        { role: "user", content: "input" },
+      ]),
+      { has_release_changes: false, notes: "" },
+    );
+    const body = JSON.parse(request.options.body);
+    assert.equal(request.url, "https://example.test/v1/messages");
+    assert.equal(request.options.headers["x-api-key"], "secret-value");
+    assert.equal(request.options.headers["anthropic-version"], "2023-06-01");
+    assert.equal("authorization" in request.options.headers, false);
+    assert.equal(body.model, "claude-model");
+    assert.equal(body.max_tokens, 64000);
+    assert.equal(body.stream, false);
+    assert.equal(body.system, "policy");
+    assert.deepEqual(body.messages, [{ role: "user", content: "input" }]);
+    assert.deepEqual(body.output_config, {
+      effort: "xhigh",
+      task_budget: "kept",
+    });
+    assert.equal("response_format" in body, false);
+  });
+
+  it("supports endpoints without authentication or effort", async () => {
+    let request;
+    const client = new MessagesClient({
+      baseUrl: "http://localhost:8317/v1",
+      apiKey: "",
+      model: "model",
+      reasoningEffort: "none",
+      requestOptions: {},
+      timeoutSeconds: 2,
+      fetchImpl: async (_url, options) => {
+        request = options;
+        return messagesResponse('```json\n{"ok":true}\n```');
+      },
+    });
+
+    assert.deepEqual(
+      await client.complete([{ role: "user", content: "input" }]),
+      { ok: true },
+    );
+    const body = JSON.parse(request.body);
+    assert.equal("x-api-key" in request.headers, false);
+    assert.equal(body.max_tokens, 32000);
+    assert.equal("output_config" in body, false);
+    assert.equal("system" in body, false);
+  });
+
+  it("retries malformed JSON with an appended repair turn", async () => {
+    const requests = [];
+    const client = new MessagesClient({
+      baseUrl: "https://example.test/v1",
+      apiKey: "",
+      model: "model",
+      reasoningEffort: "none",
+      requestOptions: {},
+      timeoutSeconds: 2,
+      fetchImpl: async (_url, options) => {
+        requests.push(JSON.parse(options.body));
+        return messagesResponse(
+          requests.length === 1 ? "This is not JSON." : '{"ok":true}',
+        );
+      },
+    });
+
+    assert.deepEqual(
+      await client.complete([
+        { role: "system", content: "policy" },
+        { role: "user", content: "input" },
+      ]),
+      { ok: true },
+    );
+    assert.equal(requests[1].system, "policy");
+    assert.deepEqual(requests[1].messages, [
+      { role: "user", content: "input" },
+      { role: "assistant", content: "This is not JSON." },
+      { role: "user", content: requests[1].messages[2].content },
+    ]);
+    assert.match(requests[1].messages[2].content, /exactly one valid JSON/);
+  });
+
+  it("fails clearly on refusals and truncated responses", async () => {
+    for (const [stopReason, pattern] of [
+      ["refusal", /declined the request/],
+      ["max_tokens", /raise max_tokens in request-options/],
+    ]) {
+      const client = new MessagesClient({
+        baseUrl: "https://example.test/v1",
+        apiKey: "",
+        model: "model",
+        reasoningEffort: "none",
+        requestOptions: {},
+        timeoutSeconds: 2,
+        fetchImpl: async () =>
+          messagesResponse('{"ok":', { stop_reason: stopReason }),
+      });
+      await assert.rejects(client.complete([]), pattern);
+    }
+  });
+
+  it("reports sanitized Anthropic error details", async () => {
+    const client = new MessagesClient({
+      baseUrl: "https://example.test/v1",
+      apiKey: "secret-value",
+      model: "model",
+      reasoningEffort: "xhigh",
+      requestOptions: {},
+      timeoutSeconds: 2,
+      fetchImpl: async () => ({
+        ok: false,
+        status: 401,
+        headers: {
+          get: (name) => (name === "request-id" ? "req_456" : null),
+        },
+        json: async () => ({
+          type: "error",
+          error: {
+            type: "authentication_error",
+            message: "invalid x-api-key secret-value",
+          },
+        }),
+      }),
+    });
+
+    await assert.rejects(client.complete([]), (error) => {
+      assert.match(error.message, /HTTP 401/);
+      assert.match(error.message, /type: authentication_error/);
+      assert.match(error.message, /request: req_456/);
+      assert.match(error.message, /invalid x-api-key \*\*\*/);
+      assert.doesNotMatch(error.message, /secret-value/);
+      return true;
+    });
+  });
+
+  it("selects the client from an explicit API format", () => {
+    const options = {
+      baseUrl: "http://localhost:8317/v1",
+      apiKey: "",
+      model: "model",
+      reasoningEffort: "none",
+      requestOptions: {},
+      timeoutSeconds: 2,
+    };
+    assert.ok(
+      createModelClient({ ...options, apiFormat: "openai" }) instanceof
+        ChatCompletionsClient,
+    );
+    assert.ok(
+      createModelClient({ ...options, apiFormat: "anthropic" }) instanceof
+        MessagesClient,
+    );
+    assert.equal(modelApiFormat(" anthropic "), "anthropic");
+    for (const format of ["", "auto", "Anthropic", "claude"]) {
+      assert.throws(() => modelApiFormat(format), /must be one of/);
+    }
   });
 });
 
