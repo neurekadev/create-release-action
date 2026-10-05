@@ -35,7 +35,7 @@ release:
         fetch-depth: 0
         persist-credentials: false
     - name: Create Release
-      uses: neurekadev/create-release-action@2
+      uses: neurekadev/create-release-action@3
       with:
         github-token: ${{ github.token }}
         api-key: ${{ secrets.MODEL_API_KEY }}
@@ -91,7 +91,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Regenerate Release Notes
-        uses: neurekadev/create-release-action@2
+        uses: neurekadev/create-release-action@3
         with:
           github-token: ${{ github.token }}
           api-key: ${{ secrets.MODEL_API_KEY }}
@@ -208,7 +208,7 @@ The action masks `github-token` and `api-key`. It sends `api-key` only to `base-
 
 ## Versioning
 
-Use `neurekadev/create-release-action@2` for compatible updates. Releases use exact bare SemVer tags such as `2.0.0`, with moving `2.0` and `2` compatibility tags. Pin a full commit SHA when you need an immutable action reference. Marketplace publication is intentionally deferred.
+Use `neurekadev/create-release-action@3` for compatible updates. Releases use exact bare SemVer tags such as `3.0.0`, with moving `3.0` and `3` compatibility tags. Pin a full commit SHA when you need an immutable action reference. Marketplace publication is intentionally deferred.
 
 ## Why Use Create Release Action?
 
