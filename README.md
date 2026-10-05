@@ -48,30 +48,7 @@ Push a complete bare Semantic Version tag such as `1.4.0`. Do not prefix it with
 
 ## Usage
 
-The action defaults to OpenAI GPT-5.6 Luna with `xhigh` reasoning effort. The examples pin that provider tuple explicitly so published workflows use it consistently. Change `api-format`, `base-url`, `model`, and `reasoning-effort` together for another provider.
-
-### Model Endpoints
-
-`api-format` selects the API, and the action appends that API's request path to `base-url`. The action never guesses the format from the URL.
-
-| `api-format`       | `base-url` default             | Request                     | `api-key` header        | `reasoning-effort` field |
-| ------------------ | ------------------------------ | --------------------------- | ----------------------- | ------------------------ |
-| `openai` (default) | `https://api.openai.com/v1`    | `POST <base-url>/responses` | `Authorization: Bearer` | `reasoning.effort`       |
-| `anthropic`        | `https://api.anthropic.com/v1` | `POST <base-url>/messages`  | `x-api-key`             | `output_config.effort`   |
-
-A full endpoint URL is used unchanged. `api-key` is optional, so unauthenticated endpoints receive no credential header. Set `reasoning-effort: none` to omit the effort field. `request-options` merges extra fields into the request body; Anthropic requests default to 32000 output tokens, which `request-options: '{"max_tokens": 64000}'` raises. OpenAI requests set `store: false`, so the provider is asked not to keep responses.
-
-```yaml
-- name: Create Release
-  uses: neurekadev/create-release-action@2
-  with:
-    github-token: ${{ github.token }}
-    api-format: anthropic
-    api-key: ${{ secrets.INFERENCE_API_KEY }}
-    base-url: https://api.anthropic.com/v1
-    model: claude-opus-5-5
-    reasoning-effort: xhigh
-```
+The action defaults to OpenAI GPT-5.6 Luna with `xhigh` reasoning effort. The examples pin those values so published workflows stay consistent. To use Anthropic or another provider, see [Model Providers](#model-providers).
 
 ### Regenerate Release Notes
 
@@ -129,22 +106,22 @@ The selected published release is edited in place. Its tag, name, release ID, as
 
 ### Inputs
 
-| Input                    | Default    | Purpose                                                                                                                              |
-| ------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `github-token`           | Required   | Creates, uploads, and publishes the GitHub Release.                                                                                  |
-| `api-format`             | `openai`   | Model API: `openai` for Responses or `anthropic` for Messages.                                                                       |
-| `api-key`                | Empty      | Optional model endpoint credential. Use the provider-neutral `INFERENCE_API_KEY` secret.                                             |
-| `base-url`               | Empty      | Provider base URL or full `/responses` or `/messages` URL; `https://api.openai.com/v1` or `https://api.anthropic.com/v1` when empty. |
-| `model`                  | Empty      | Provider model identifier; `gpt-5.6-luna` or `claude-opus-5-5` when empty.                                                           |
-| `reasoning-effort`       | `xhigh`    | Provider reasoning effort; `none` omits the field.                                                                                   |
-| `release-tag`            | Empty      | Existing published bare Semantic Version tag to regenerate during `workflow_dispatch`.                                               |
-| `release-notes-audience` | `end-user` | Note audience: `end-user`, `technical`, or `maintainer`.                                                                             |
-| `request-options`        | `{}`       | Extra JSON merged into the model request body.                                                                                       |
-| `max-chunk`              | `200000`   | Maximum comparison characters per analysis request.                                                                                  |
-| `timeout`                | `300`      | Timeout in seconds for each model request.                                                                                           |
-| `files`                  | Empty      | Newline-separated asset paths or glob patterns used only when creating a release.                                                    |
-| `upstream-repository`    | `auto`     | `owner/repository` used to resolve soft-fork upstream release notes.                                                                 |
-| `upstream-tag`           | `auto`     | Exact soft-fork upstream release tag when it cannot be inferred.                                                                     |
+| Input                    | Default    | Purpose                                                                                                       |
+| ------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------- |
+| `github-token`           | Required   | Creates, uploads, and publishes the GitHub Release.                                                           |
+| `api-format`             | `openai`   | API to call: `openai` or `anthropic`. See [Model Providers](#model-providers).                                |
+| `api-key`                | Empty      | Optional model API key. Use the provider-neutral `INFERENCE_API_KEY` secret.                                  |
+| `base-url`               | Empty      | Base URL as given to the official SDK; `https://api.openai.com/v1` or `https://api.anthropic.com` when empty. |
+| `model`                  | Empty      | Model identifier; `gpt-5.6-luna` or `claude-opus-5-5` when empty.                                             |
+| `reasoning-effort`       | `xhigh`    | Reasoning effort sent to the model; `none` leaves it out.                                                     |
+| `release-tag`            | Empty      | Existing published bare Semantic Version tag to regenerate during `workflow_dispatch`.                        |
+| `release-notes-audience` | `end-user` | Note audience: `end-user`, `technical`, or `maintainer`.                                                      |
+| `request-options`        | `{}`       | Extra JSON merged into the model request body.                                                                |
+| `max-chunk`              | `200000`   | Maximum comparison characters per analysis request.                                                           |
+| `timeout`                | `300`      | Timeout in seconds for each model request.                                                                    |
+| `files`                  | Empty      | Newline-separated asset paths or glob patterns used only when creating a release.                             |
+| `upstream-repository`    | `auto`     | `owner/repository` used to resolve soft-fork upstream release notes.                                          |
+| `upstream-tag`           | `auto`     | Exact soft-fork upstream release tag when it cannot be inferred.                                              |
 
 ### Outputs
 
@@ -162,6 +139,50 @@ The selected published release is edited in place. Its tag, name, release ID, as
 - Regenerates a published release's notes in place from a manual workflow run.
 - Publishes requested assets through a draft-first flow with scoped failure cleanup.
 - Supports ordinary releases plus contiguous soft-fork revisions and hard-fork transitions.
+
+## Model Providers
+
+Set `api-format` to the API your provider speaks, and `base-url` to the same base URL you would give that API's official SDK (`OPENAI_BASE_URL` or `ANTHROPIC_BASE_URL`). The action adds the endpoint path, exactly like the SDK.
+
+| `api-format`       | API                | Default `base-url`          | Requests go to           | `api-key` is sent as    |
+| ------------------ | ------------------ | --------------------------- | ------------------------ | ----------------------- |
+| `openai` (default) | OpenAI Responses   | `https://api.openai.com/v1` | `<base-url>/responses`   | `Authorization: Bearer` |
+| `anthropic`        | Anthropic Messages | `https://api.anthropic.com` | `<base-url>/v1/messages` | `x-api-key`             |
+
+Each example replaces the model inputs (`base-url`, `model`, `reasoning-effort`) in the Quickstart step.
+
+**OpenAI**: the Quickstart already uses it.
+
+**Anthropic**
+
+```yaml
+api-format: anthropic
+base-url: https://api.anthropic.com
+model: claude-opus-5-5
+reasoning-effort: xhigh
+```
+
+**Provider or proxy with the OpenAI Responses API**
+
+```yaml
+base-url: https://llm.example.com/v1
+model: provider-model-id
+reasoning-effort: high # or none if the provider has no reasoning setting
+```
+
+**Anthropic-compatible provider or proxy**
+
+```yaml
+api-format: anthropic
+base-url: https://llm.example.com
+model: provider-model-id
+reasoning-effort: high # or none if the provider has no effort setting
+```
+
+- `reasoning-effort` is sent as `reasoning.effort` for `openai` and `output_config.effort` for `anthropic`.
+- `openai` requests set `store: false`, so OpenAI does not keep the generated responses.
+- Anthropic requests allow 32000 output tokens. Raise the limit with `request-options: '{"max_tokens": 64000}'`.
+- Leave `api-key` empty for endpoints that need no authentication.
 
 ## Release Rules
 
@@ -181,7 +202,7 @@ On `workflow_dispatch`, `release-tag` selects one existing published release and
 
 Repository commit messages and textual diffs are sent to the configured endpoint. Choose a provider whose data-handling terms fit your repository. Binary contents are not included, but textual diffs can contain sensitive values committed to Git history.
 
-The action masks `github-token` and `api-key`. It sends `api-key` only to `base-url`, as an `Authorization: Bearer` header for `openai` or an `x-api-key` header for `anthropic`. No provider-specific environment variable is read.
+The action masks `github-token` and `api-key`. It sends `api-key` only to `base-url`, using the header listed in [Model Providers](#model-providers). No provider-specific environment variable is read.
 
 ## Versioning
 

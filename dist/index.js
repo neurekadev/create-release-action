@@ -39980,7 +39980,7 @@ const MODEL_API_FORMATS = Object.freeze({
     model: "gpt-5.6-luna",
   }),
   anthropic: Object.freeze({
-    baseUrl: "https://api.anthropic.com/v1",
+    baseUrl: "https://api.anthropic.com",
     model: "claude-opus-5-5",
   }),
 });
@@ -40011,7 +40011,7 @@ function endpointUrl(baseUrl, path) {
   if (!trimmed) {
     throw new Error("base-url cannot be empty.");
   }
-  return trimmed.endsWith(path) ? trimmed : `${trimmed}${path}`;
+  return `${trimmed}${path}`;
 }
 
 function responsesUrl(baseUrl) {
@@ -40019,7 +40019,7 @@ function responsesUrl(baseUrl) {
 }
 
 function messagesUrl(baseUrl) {
-  return endpointUrl(baseUrl, "/messages");
+  return endpointUrl(baseUrl, "/v1/messages");
 }
 
 function splitWithoutLoss(value, maximum) {

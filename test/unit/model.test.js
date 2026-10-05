@@ -73,7 +73,7 @@ describe("OpenAI-compatible responses", () => {
       timeoutSeconds: 300,
     });
     assert.deepEqual(MODEL_API_FORMATS.anthropic, {
-      baseUrl: "https://api.anthropic.com/v1",
+      baseUrl: "https://api.anthropic.com",
       model: "claude-opus-5-5",
     });
     assert.equal(
@@ -111,14 +111,14 @@ describe("OpenAI-compatible responses", () => {
     }
   });
 
-  it("normalizes base and full endpoint URLs", () => {
+  it("appends the SDK endpoint path to the base URL", () => {
     assert.equal(
       responsesUrl("https://api.openai.com/v1/"),
       "https://api.openai.com/v1/responses",
     );
     assert.equal(
-      responsesUrl("https://example.test/v1/responses"),
-      "https://example.test/v1/responses",
+      responsesUrl(" https://example.test/api/v1 "),
+      "https://example.test/api/v1/responses",
     );
     assert.throws(() => responsesUrl("  "), /base-url cannot be empty/);
   });
@@ -406,14 +406,14 @@ describe("Anthropic-compatible messages", () => {
     };
   }
 
-  it("normalizes base and full endpoint URLs", () => {
+  it("appends the SDK endpoint path to the base URL", () => {
     assert.equal(
-      messagesUrl("https://api.anthropic.com/v1/"),
+      messagesUrl("https://api.anthropic.com/"),
       "https://api.anthropic.com/v1/messages",
     );
     assert.equal(
-      messagesUrl("http://localhost:8317/v1/messages"),
-      "http://localhost:8317/v1/messages",
+      messagesUrl("https://example.test/proxy"),
+      "https://example.test/proxy/v1/messages",
     );
     assert.throws(() => messagesUrl("  "), /base-url cannot be empty/);
   });
@@ -421,7 +421,7 @@ describe("Anthropic-compatible messages", () => {
   it("sends x-api-key auth, a top-level system prompt, and effort", async () => {
     let request;
     const client = new MessagesClient({
-      baseUrl: "https://example.test/v1",
+      baseUrl: "https://example.test",
       apiKey: "secret-value",
       model: "claude-model",
       reasoningEffort: "xhigh",
@@ -466,7 +466,7 @@ describe("Anthropic-compatible messages", () => {
   it("supports endpoints without authentication or effort", async () => {
     let request;
     const client = new MessagesClient({
-      baseUrl: "http://localhost:8317/v1",
+      baseUrl: "http://localhost:8317",
       apiKey: "",
       model: "model",
       reasoningEffort: "none",
@@ -492,7 +492,7 @@ describe("Anthropic-compatible messages", () => {
   it("retries malformed JSON with an appended repair turn", async () => {
     const requests = [];
     const client = new MessagesClient({
-      baseUrl: "https://example.test/v1",
+      baseUrl: "https://example.test",
       apiKey: "",
       model: "model",
       reasoningEffort: "none",
@@ -530,7 +530,7 @@ describe("Anthropic-compatible messages", () => {
     ]) {
       let requests = 0;
       const client = new MessagesClient({
-        baseUrl: "https://example.test/v1",
+        baseUrl: "https://example.test",
         apiKey: "",
         model: "model",
         reasoningEffort: "none",
@@ -548,7 +548,7 @@ describe("Anthropic-compatible messages", () => {
 
   it("reports sanitized Anthropic error details", async () => {
     const client = new MessagesClient({
-      baseUrl: "https://example.test/v1",
+      baseUrl: "https://example.test",
       apiKey: "secret-value",
       model: "model",
       reasoningEffort: "xhigh",
