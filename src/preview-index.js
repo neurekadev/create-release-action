@@ -7,6 +7,7 @@ import {
   generateReleaseNotesPreview,
   previewDocument,
   previewFailureDocument,
+  previewModelConfiguration,
   previewRepository,
 } from "./preview.js";
 
@@ -39,11 +40,8 @@ async function main(env = process.env) {
   const github = new GitHubService(octokit, owner, repo);
   const git = new GitRepository(targetWorkspace);
   const client = createModelClient({
-    apiFormat: DEFAULT_MODEL_CONFIGURATION.apiFormat,
-    baseUrl: DEFAULT_MODEL_CONFIGURATION.baseUrl,
+    ...previewModelConfiguration(env),
     apiKey,
-    model: DEFAULT_MODEL_CONFIGURATION.model,
-    reasoningEffort: DEFAULT_MODEL_CONFIGURATION.reasoningEffort,
     requestOptions: {},
     timeoutSeconds: DEFAULT_MODEL_CONFIGURATION.timeoutSeconds,
   });
