@@ -1,7 +1,6 @@
 name: CI
 
 on:
-  pull_request:
   push:
     branches:
       - main
@@ -46,7 +45,7 @@ jobs:
       - name: Install actionlint
         run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
       - name: Run actionlint
-        run: actionlint .github/workflows/CI.yaml
+        run: actionlint
 
   unit-tests:
     name: Unit Tests
@@ -114,7 +113,11 @@ jobs:
         uses: ./
         with:
           github-token: ${{ github.token }}
+          api-format: anthropic
           api-key: ${{ secrets.MODEL_API_KEY }}
+          base-url: https://agents.neureka.dev
+          model: claude-opus-5-5
+          reasoning-effort: high
       - name: Update Compatibility Tags
         if: ${{ !contains(github.ref_name, '-') && !contains(github.ref_name, '+') }}
         env:

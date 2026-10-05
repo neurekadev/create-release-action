@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   generateReleaseNotesPreview,
   previewDocument,
+  previewModelConfiguration,
   previewRepository,
 } from "../../src/preview.js";
 import { releasePolicies } from "../../src/policy.js";
@@ -20,6 +21,45 @@ describe("release-note previews", () => {
     assert.throws(
       () => previewRepository("not a repository", "fallback/repository"),
       /owner\/name/,
+    );
+  });
+
+  it("uses the action model defaults when no provider is configured", () => {
+    assert.deepEqual(previewModelConfiguration({}), {
+      apiFormat: "openai",
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-5.6-luna",
+      reasoningEffort: "xhigh",
+    });
+  });
+
+  it("reads the provider configuration from the environment", () => {
+    assert.deepEqual(
+      previewModelConfiguration({
+        MODEL: "claude-opus-5-5",
+        MODEL_API_FORMAT: "anthropic",
+        MODEL_BASE_URL: "https://agents.neureka.dev",
+        MODEL_REASONING_EFFORT: "high",
+      }),
+      {
+        apiFormat: "anthropic",
+        baseUrl: "https://agents.neureka.dev",
+        model: "claude-opus-5-5",
+        reasoningEffort: "high",
+      },
+    );
+    assert.deepEqual(
+      previewModelConfiguration({ MODEL_API_FORMAT: "anthropic" }),
+      {
+        apiFormat: "anthropic",
+        baseUrl: "https://api.anthropic.com",
+        model: "claude-opus-5-5",
+        reasoningEffort: "xhigh",
+      },
+    );
+    assert.throws(
+      () => previewModelConfiguration({ MODEL_API_FORMAT: "gemini" }),
+      /api-format must be one of/,
     );
   });
 

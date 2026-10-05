@@ -1,5 +1,10 @@
 import { selectBaseline } from "./github.js";
-import { generateReleaseNotes } from "./model.js";
+import {
+  DEFAULT_MODEL_CONFIGURATION,
+  MODEL_API_FORMATS,
+  generateReleaseNotes,
+  modelApiFormat,
+} from "./model.js";
 import { releaseNoteAudience } from "./policy.js";
 
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
@@ -10,6 +15,20 @@ export function previewRepository(value, fallback) {
     throw new Error("repository must use the owner/name format.");
   }
   return repository;
+}
+
+export function previewModelConfiguration(env) {
+  const apiFormat = modelApiFormat(
+    env.MODEL_API_FORMAT || DEFAULT_MODEL_CONFIGURATION.apiFormat,
+  );
+  return {
+    apiFormat,
+    baseUrl: env.MODEL_BASE_URL?.trim() || MODEL_API_FORMATS[apiFormat].baseUrl,
+    model: env.MODEL?.trim() || MODEL_API_FORMATS[apiFormat].model,
+    reasoningEffort:
+      env.MODEL_REASONING_EFFORT?.trim() ||
+      DEFAULT_MODEL_CONFIGURATION.reasoningEffort,
+  };
 }
 
 export async function generateReleaseNotesPreview(options) {

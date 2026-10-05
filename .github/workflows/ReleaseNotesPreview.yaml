@@ -47,7 +47,11 @@ jobs:
         working-directory: action-source
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          MODEL: claude-opus-5-5
+          MODEL_API_FORMAT: anthropic
           MODEL_API_KEY: ${{ secrets.MODEL_API_KEY }}
+          MODEL_BASE_URL: https://agents.neureka.dev
+          MODEL_REASONING_EFFORT: high
           PREVIEW_OUTPUT: ${{ github.workspace }}/release-notes-end-user.md
           RELEASE_NOTES_AUDIENCE: end-user
           TARGET_REPOSITORY: ${{ inputs.repository || github.repository }}
@@ -95,7 +99,11 @@ jobs:
         working-directory: action-source
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          MODEL: claude-opus-5-5
+          MODEL_API_FORMAT: anthropic
           MODEL_API_KEY: ${{ secrets.MODEL_API_KEY }}
+          MODEL_BASE_URL: https://agents.neureka.dev
+          MODEL_REASONING_EFFORT: high
           PREVIEW_OUTPUT: ${{ github.workspace }}/release-notes-technical.md
           RELEASE_NOTES_AUDIENCE: technical
           TARGET_REPOSITORY: ${{ inputs.repository || github.repository }}
@@ -143,7 +151,11 @@ jobs:
         working-directory: action-source
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          MODEL: claude-opus-5-5
+          MODEL_API_FORMAT: anthropic
           MODEL_API_KEY: ${{ secrets.MODEL_API_KEY }}
+          MODEL_BASE_URL: https://agents.neureka.dev
+          MODEL_REASONING_EFFORT: high
           PREVIEW_OUTPUT: ${{ github.workspace }}/release-notes-maintainer.md
           RELEASE_NOTES_AUDIENCE: maintainer
           TARGET_REPOSITORY: ${{ inputs.repository || github.repository }}
