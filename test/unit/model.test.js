@@ -787,6 +787,8 @@ describe("provenance-aware comparisons", () => {
       "lib/reports/coverage/summary.rb",
       "spec/schema.graphql",
       "specs/schema.user.v2.json",
+      "specs/petstore.openapi.yaml",
+      "spec/billing.swagger.json",
       "packages/cli/src/dist/format.js",
       "src/cmd/dist/build.go",
       "spec/openapi.yaml",

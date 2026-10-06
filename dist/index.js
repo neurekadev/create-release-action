@@ -39970,7 +39970,7 @@ const SPEC_TEST_DATA_DIRECTORIES = new Set([
   "vcr_cassettes",
 ]);
 const CONTRACT_FILE_PATTERN =
-  /(?:\.(?:graphql|gql|proto)|^(?:api|asyncapi|openapi|schema|swagger)(?:[._-].*)?\.(?:json|ya?ml))$/;
+  /(?:\.(?:graphql|gql|proto)|^(?:api|asyncapi|openapi|schema|swagger)(?:[._-].*)?\.(?:json|ya?ml)|[._-](?:asyncapi|openapi|swagger)\.(?:json|ya?ml))$/;
 
 // The underscore test suffix is conventional only in these languages, so
 // product modules such as src/ab_test.ts stay primary.
