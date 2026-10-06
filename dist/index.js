@@ -39943,10 +39943,19 @@ const CONTEXT_ONLY_DIRECTORIES = new Set([
   "vendor",
 ]);
 
-// Output directories are context-only unless a source root sits above their
-// parent: src/commands/build/ is product source, while app/build/ and
-// packages/lib/dist/ are generated output.
+// Output directories are context-only unless they sit inside source code.
+// A strong source root counts anywhere above them, so src/build/ is product
+// source. A generic root such as app or lib must sit above their parent,
+// because app/build/ and packages/lib/dist/ are generated output.
 const GENERATED_OUTPUT_DIRECTORIES = new Set(["build", "coverage", "dist"]);
+
+const STRONG_SOURCE_ROOT_DIRECTORIES = new Set([
+  "cmd",
+  "internal",
+  "pkg",
+  "source",
+  "src",
+]);
 
 // Spec directories hold tests, except for interface definitions such as
 // spec/openapi.yaml, which are public contracts.
@@ -40106,13 +40115,12 @@ function isContextOnlyPath(value) {
   const output = directories.findIndex((part) =>
     GENERATED_OUTPUT_DIRECTORIES.has(part),
   );
-  if (
-    output >= 0 &&
-    !directories
-      .slice(0, Math.max(0, output - 1))
-      .some((part) => SOURCE_ROOT_DIRECTORIES.has(part))
-  ) {
-    return true;
+  if (output >= 0) {
+    const above = directories.slice(0, output);
+    const inSource =
+      above.some((part) => STRONG_SOURCE_ROOT_DIRECTORIES.has(part)) ||
+      above.slice(0, -1).some((part) => SOURCE_ROOT_DIRECTORIES.has(part));
+    if (!inSource) return true;
   }
   if (CONTEXT_ONLY_BASENAMES.has(basename)) return true;
   if (/\.(?:lock|min\.js|map)$/.test(basename)) return true;

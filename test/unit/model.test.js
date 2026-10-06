@@ -782,6 +782,9 @@ describe("provenance-aware comparisons", () => {
   it("keeps public source, API specs, and container images as primary", () => {
     for (const path of [
       "src/commands/build/run.ts",
+      "src/build/index.ts",
+      "cmd/build/main.go",
+      "packages/cli/src/dist/format.js",
       "lib/reports/coverage/summary.rb",
       "spec/openapi.yaml",
       "specs/api.yaml",
@@ -798,6 +801,7 @@ describe("provenance-aware comparisons", () => {
       "packages/cli/dist/index.js",
       "packages/lib/dist/index.js",
       "app/build/outputs/apk/app.apk",
+      "lib/coverage/report.rb",
       "coverage/lcov.info",
       "spec/models/user_spec.rb",
       "spec/spec_helper.rb",
