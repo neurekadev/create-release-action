@@ -185,6 +185,7 @@ reasoning-effort: high # or none if the provider has no effort setting
 - `openai` requests set `store: false`, so OpenAI does not keep the generated responses.
 - Anthropic requests allow 32000 output tokens. Raise the limit with `request-options: '{"max_tokens": 64000}'`.
 - Leave `api-key` empty for endpoints that need no authentication.
+- Temporary endpoint errors (rate limits, 5xx responses, and network failures) are retried up to 3 times with backoff, honoring the provider's `Retry-After` header.
 
 ## Release Note Audiences
 

@@ -710,6 +710,190 @@ describe("Anthropic-compatible messages", () => {
   });
 });
 
+describe("temporary endpoint errors", () => {
+  const VALID_JSON = '{"has_release_changes":false,"notes":""}';
+
+  function errorResponse(status, headers = {}, payload = {}) {
+    let cancelled = false;
+    return {
+      ok: false,
+      status,
+      headers: { get: (name) => headers[name] ?? null },
+      body: {
+        cancel: async () => {
+          cancelled = true;
+        },
+      },
+      json: async () => payload,
+      get cancelled() {
+        return cancelled;
+      },
+    };
+  }
+
+  function retryingClient(responses, options = {}) {
+    const sleeps = [];
+    let requests = 0;
+    const client = createModelClient({
+      apiFormat: "openai",
+      baseUrl: "https://example.test",
+      apiKey: "secret-value",
+      model: "model",
+      reasoningEffort: "none",
+      requestOptions: {},
+      timeoutSeconds: 2,
+      fetchImpl: async (url, init) => {
+        const next = responses[Math.min(requests, responses.length - 1)];
+        requests += 1;
+        return typeof next === "function" ? next(url, init) : next;
+      },
+      sleep: async (milliseconds) => {
+        sleeps.push(milliseconds);
+      },
+      ...options,
+    });
+    return {
+      client,
+      sleeps,
+      get requests() {
+        return requests;
+      },
+    };
+  }
+
+  it("retries HTTP 503 with exponential backoff and discards the body", async () => {
+    const unavailable = errorResponse(503);
+    const run = retryingClient([
+      unavailable,
+      errorResponse(503),
+      responsesResponse(VALID_JSON),
+    ]);
+
+    assert.deepEqual(await run.client.complete([]), {
+      has_release_changes: false,
+      notes: "",
+    });
+    assert.equal(run.requests, 3);
+    assert.deepEqual(run.sleeps, [2000, 4000]);
+    assert.equal(unavailable.cancelled, true);
+  });
+
+  it("honors Retry-After given in seconds", async () => {
+    const run = retryingClient([
+      errorResponse(429, { "retry-after": "7" }),
+      responsesResponse(VALID_JSON),
+    ]);
+
+    await run.client.complete([]);
+    assert.deepEqual(run.sleeps, [7000]);
+  });
+
+  it("honors Retry-After given as an HTTP date", async () => {
+    const retryAt = new Date(Date.now() + 10_000).toUTCString();
+    const run = retryingClient([
+      errorResponse(503, { "retry-after": retryAt }),
+      responsesResponse(VALID_JSON),
+    ]);
+
+    await run.client.complete([]);
+    assert.equal(run.sleeps.length, 1);
+    assert.ok(run.sleeps[0] > 8000 && run.sleeps[0] <= 10_000, run.sleeps[0]);
+  });
+
+  it("caps Retry-After at 60 seconds", async () => {
+    const run = retryingClient([
+      errorResponse(429, { "retry-after": "3600" }),
+      errorResponse(503, {
+        "retry-after": new Date(Date.now() + 3_600_000).toUTCString(),
+      }),
+      responsesResponse(VALID_JSON),
+    ]);
+
+    await run.client.complete([]);
+    assert.deepEqual(run.sleeps, [60_000, 60_000]);
+  });
+
+  it("gives up after three retries with the final HTTP error", async () => {
+    const run = retryingClient([
+      errorResponse(502),
+      errorResponse(502),
+      errorResponse(502),
+      errorResponse(529, {}, { error: { message: "Overloaded secret-value" } }),
+    ]);
+
+    await assert.rejects(run.client.complete([]), (error) => {
+      assert.match(error.message, /HTTP 529/);
+      assert.match(error.message, /Overloaded \*\*\*/);
+      assert.doesNotMatch(error.message, /secret-value/);
+      return true;
+    });
+    assert.equal(run.requests, 4);
+    assert.deepEqual(run.sleeps, [2000, 4000, 8000]);
+  });
+
+  for (const status of [400, 401]) {
+    it(`does not retry HTTP ${status}`, async () => {
+      const run = retryingClient([
+        errorResponse(status),
+        responsesResponse(VALID_JSON),
+      ]);
+
+      await assert.rejects(
+        run.client.complete([]),
+        new RegExp(`HTTP ${status}`),
+      );
+      assert.equal(run.requests, 1);
+      assert.deepEqual(run.sleeps, []);
+    });
+  }
+
+  it("does not retry a request timeout", async () => {
+    const run = retryingClient([
+      (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init.signal.addEventListener("abort", () => {
+            const error = new Error("aborted");
+            error.name = "AbortError";
+            reject(error);
+          });
+        }),
+      responsesResponse(VALID_JSON),
+    ]);
+    run.client.timeoutMilliseconds = 10;
+
+    await assert.rejects(run.client.complete([]), /exceeded 0.01 seconds/);
+    assert.equal(run.requests, 1);
+    assert.deepEqual(run.sleeps, []);
+  });
+
+  it("retries a network failure", async () => {
+    const run = retryingClient([
+      async () => {
+        throw new TypeError("fetch failed");
+      },
+      responsesResponse(VALID_JSON),
+    ]);
+
+    assert.deepEqual(await run.client.complete([]), {
+      has_release_changes: false,
+      notes: "",
+    });
+    assert.equal(run.requests, 2);
+    assert.deepEqual(run.sleeps, [2000]);
+  });
+
+  it("does not retry invalid content beyond the JSON repair", async () => {
+    const run = retryingClient([responsesResponse("still not JSON")]);
+
+    await assert.rejects(
+      run.client.complete([]),
+      /not valid JSON after one retry/,
+    );
+    assert.equal(run.requests, 2);
+    assert.deepEqual(run.sleeps, []);
+  });
+});
+
 describe("release-note audiences", () => {
   it("accepts the three public values and rejects everything else", () => {
     for (const audience of ["end-user", "technical", "maintainer"]) {
