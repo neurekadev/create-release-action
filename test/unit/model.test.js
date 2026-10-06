@@ -14,6 +14,7 @@ import {
   responsesUrl,
   comparisonChunks,
   comparisonSources,
+  isContextOnlyPath,
   generateReleaseNotes,
   parseModelJson,
   splitWithoutLoss,
@@ -800,6 +801,58 @@ describe("provenance-aware comparisons", () => {
         (source) => source.role === "primary",
       ),
     );
+  });
+
+  it("keeps public source, API specs, and container images as primary", () => {
+    for (const path of [
+      "src/commands/build/run.ts",
+      "src/build/index.ts",
+      "cmd/build/main.go",
+      "lib/reports/coverage/summary.rb",
+      "spec/schema.graphql",
+      "specs/schema.user.v2.json",
+      "specs/petstore.openapi.yaml",
+      "spec/billing.swagger.json",
+      "packages/cli/src/dist/format.js",
+      "src/cmd/dist/build.go",
+      "spec/openapi.yaml",
+      "specs/api.yaml",
+      "spec/api/openapi_spec.json",
+      "src/experiments/ab_test.ts",
+      "Dockerfile",
+      "docker/app/Dockerfile",
+      "build.gradle",
+    ]) {
+      assert.equal(isContextOnlyPath(path), false, path);
+    }
+    for (const path of [
+      "build/output.js",
+      "packages/cli/dist/index.js",
+      "packages/lib/dist/index.js",
+      "internal/web/dist/assets/index-3f9a.js",
+      "cmd/server/dist/app.js",
+      "spec/cassettes/login.yml",
+      "spec/fixtures_rapid.yml",
+      "spec/vcr_cassettes/github_api.yml",
+      "spec/support/api_response.json",
+      "specs/user-schema.v2.json",
+      "spec/support/expected_response.json",
+      "app/build/outputs/apk/app.apk",
+      "lib/coverage/report.rb",
+      "coverage/lcov.info",
+      "spec/models/user_spec.rb",
+      "spec/spec_helper.rb",
+      "spec/support/helpers.js",
+      "lib/widget_test.dart",
+      "pkg/server/handler_test.go",
+      "tests/test_api.py",
+      "app/test_settings.py",
+      "src/run.spec.ts",
+      ".github/workflows/CI.yaml",
+      "Makefile",
+    ]) {
+      assert.equal(isContextOnlyPath(path), true, path);
+    }
   });
 
   it("repeats source provenance across fragments without losing raw content", () => {

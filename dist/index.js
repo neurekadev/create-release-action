@@ -39966,17 +39966,56 @@ const CONTEXT_ONLY_DIRECTORIES = new Set([
   ".github",
   "__fixtures__",
   "__tests__",
-  "build",
-  "coverage",
-  "dist",
   "fixtures",
   "node_modules",
-  "spec",
-  "specs",
   "test",
   "tests",
   "third_party",
   "vendor",
+]);
+
+// Output directories are context-only unless they sit inside source code.
+// A dist folder counts as source only directly under a strong source root,
+// such as src/dist/, because nested dist folders hold committed bundles.
+// A build or coverage folder counts as source under a strong source root
+// anywhere above it, or under a generic root such as app or lib above its
+// parent, because app/build/ is generated output.
+const DIST_DIRECTORY = "dist";
+const GENERATED_OUTPUT_DIRECTORIES = new Set(["build", "coverage"]);
+
+const STRONG_SOURCE_ROOT_DIRECTORIES = new Set([
+  "cmd",
+  "internal",
+  "pkg",
+  "source",
+  "src",
+]);
+
+// Spec directories hold tests and test data, except for interface
+// definitions such as spec/openapi.yaml, which are public contracts.
+const SPEC_DIRECTORIES = new Set(["spec", "specs"]);
+const SPEC_TEST_DATA_DIRECTORIES = new Set([
+  "cassettes",
+  "snapshots",
+  "support",
+  "vcr_cassettes",
+]);
+const CONTRACT_FILE_PATTERN =
+  /(?:\.(?:graphql|gql|proto)|^(?:api|asyncapi|openapi|schema|swagger)(?:[._-].*)?\.(?:json|ya?ml)|[._-](?:asyncapi|openapi|swagger)\.(?:json|ya?ml))$/;
+
+// The underscore test suffix is conventional only in these languages, so
+// product modules such as src/ab_test.ts stay primary.
+const UNDERSCORE_TEST_FILE_PATTERN =
+  /_(?:test|spec)\.(?:c|cc|cpp|dart|exs|go|py|rb|rs)$/;
+
+const SOURCE_ROOT_DIRECTORIES = new Set([
+  "app",
+  "cmd",
+  "internal",
+  "lib",
+  "pkg",
+  "source",
+  "src",
 ]);
 
 const CONTEXT_ONLY_BASENAMES = new Set([
@@ -39989,7 +40028,6 @@ const CONTEXT_ONLY_BASENAMES = new Set([
   "bun.lockb",
   "cargo.lock",
   "composer.lock",
-  "dockerfile",
   "gemfile.lock",
   "go.sum",
   "makefile",
@@ -40105,10 +40143,36 @@ function isContextOnlyPath(value) {
   const parts = path.split("/").filter(Boolean);
   const basename = parts.at(-1) || "";
 
-  if (parts.some((part) => CONTEXT_ONLY_DIRECTORIES.has(part))) return true;
+  const directories = parts.slice(0, -1);
+  if (directories.some((part) => CONTEXT_ONLY_DIRECTORIES.has(part))) {
+    return true;
+  }
+  if (
+    directories.some((part) => SPEC_DIRECTORIES.has(part)) &&
+    (directories.some((part) => SPEC_TEST_DATA_DIRECTORIES.has(part)) ||
+      !CONTRACT_FILE_PATTERN.test(basename))
+  ) {
+    return true;
+  }
+  const dist = directories.indexOf(DIST_DIRECTORY);
+  if (dist >= 0 && !STRONG_SOURCE_ROOT_DIRECTORIES.has(directories[dist - 1])) {
+    return true;
+  }
+  const output = directories.findIndex((part) =>
+    GENERATED_OUTPUT_DIRECTORIES.has(part),
+  );
+  if (output >= 0) {
+    const above = directories.slice(0, output);
+    const inSource =
+      above.some((part) => STRONG_SOURCE_ROOT_DIRECTORIES.has(part)) ||
+      above.slice(0, -1).some((part) => SOURCE_ROOT_DIRECTORIES.has(part));
+    if (!inSource) return true;
+  }
   if (CONTEXT_ONLY_BASENAMES.has(basename)) return true;
   if (/\.(?:lock|min\.js|map)$/.test(basename)) return true;
   if (/\.(?:test|spec)\.[^.]+$/.test(basename)) return true;
+  if (UNDERSCORE_TEST_FILE_PATTERN.test(basename)) return true;
+  if (/^test_.+\.py$/.test(basename)) return true;
   return /^(?:babel|eslint|rollup|vite|webpack)\.config\./.test(basename);
 }
 
