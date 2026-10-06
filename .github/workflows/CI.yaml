@@ -126,8 +126,21 @@ jobs:
           major="${RELEASE_TAG%%.*}"
           remainder="${RELEASE_TAG#*.}"
           minor="${major}.${remainder%%.*}"
+          newest() {
+            git tag --list "$1.*" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1
+          }
+          git fetch --force --tags --quiet origin
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag --force "$minor" "$RELEASE_TAG"
-          git tag --force "$major" "$RELEASE_TAG"
-          git push origin --force "refs/tags/$minor" "refs/tags/$major"
+          aliases=()
+          for alias in "$minor" "$major"; do
+            if [ "$(newest "$alias")" = "$RELEASE_TAG" ]; then
+              git tag --force "$alias" "$RELEASE_TAG"
+              aliases+=("refs/tags/$alias")
+            else
+              echo "::notice::Leaving $alias on $(newest "$alias"), which is newer than $RELEASE_TAG."
+            fi
+          done
+          if [ "${#aliases[@]}" -gt 0 ]; then
+            git push origin --force "${aliases[@]}"
+          fi
