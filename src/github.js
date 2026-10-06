@@ -107,7 +107,8 @@ export class GitHubService {
 function isBaselineCandidate(release, stableTarget) {
   let version;
   try {
-    version = parseSemVer(release.tag_name);
+    // Earlier releases may predate bare tags, so accept a leading "v".
+    version = parseSemVer(release.tag_name.replace(/^v(?=\d)/, ""));
   } catch {
     return false;
   }

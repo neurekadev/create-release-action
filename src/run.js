@@ -175,6 +175,11 @@ export async function runAction(dependencies) {
     git,
     { stable: !isPrerelease(version) },
   );
+  if (!baseline && reachable.length > 0) {
+    core.warning(
+      `No reachable ${isPrerelease(version) ? "" : "stable "}Semantic Version release can be the baseline, so the release notes cover the full history.`,
+    );
+  }
   const history = analyzeForkHistory(reachable);
   const releaseMode = validateReleaseTransition(version, history);
   let softFork = null;
