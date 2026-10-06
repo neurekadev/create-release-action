@@ -199,7 +199,7 @@ reasoning-effort: high # or none if the provider has no effort setting
 
 ## Release Rules
 
-The newest published release reachable from the pushed tag is the baseline. The action sends the complete commit history and textual diff for that comparison to the configured model endpoint. Large comparisons are analyzed losslessly in chunks and synthesized without truncation.
+The newest published release reachable from the pushed tag is the baseline. Only Semantic Version tags count, with or without a leading `v`, and a stable release skips prereleases, so `4.0.0` notes cover everything since the last stable release, including changes first shipped in `4.0.0-rc.1`. When no release qualifies, the notes cover the full history and the run logs a warning. The action sends the complete commit history and textual diff for that comparison to the configured model endpoint. Large comparisons are analyzed losslessly in chunks and synthesized without truncation.
 
 Release notes describe net changes under `Breaking Changes`, `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, and `Security`; deduplicate related work; and do not read or require `CHANGELOG.md`. Content depends on the [release note audience](#release-note-audiences). A release is not created when no changes qualify for the selected audience.
 

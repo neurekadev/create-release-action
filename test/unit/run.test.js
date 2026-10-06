@@ -22,6 +22,7 @@ function coreStub(inputs = {}) {
   const values = { ...DEFAULT_INPUTS, ...inputs };
   const outputs = new Map();
   const info = [];
+  const warnings = [];
   const secrets = [];
   return {
     getInput(name, options = {}) {
@@ -34,6 +35,9 @@ function coreStub(inputs = {}) {
     info(message) {
       info.push(message);
     },
+    warning(message) {
+      warnings.push(message);
+    },
     setOutput(name, value) {
       outputs.set(name, value);
     },
@@ -41,6 +45,7 @@ function coreStub(inputs = {}) {
       secrets.push(value);
     },
     infoMessages: info,
+    warningMessages: warnings,
     outputs,
     secrets,
   };
@@ -349,6 +354,34 @@ describe("action orchestration", () => {
       assets: [{ name: "artifact.zip" }],
       makeLatest: "legacy",
     });
+  });
+
+  it("warns when only prereleases precede the first stable release", async () => {
+    const calls = [];
+    const core = coreStub();
+    await runAction({
+      core,
+      env: pushEnvironment(),
+      githubService: {
+        listReleases: async () => [
+          publishedRelease("2.0.0-rc.1", 1, { prerelease: true }),
+        ],
+      },
+      gitRepository: gitStub(calls),
+      createModelClient: () => ({}),
+      generateNotes: async () => ({
+        hasReleaseChanges: true,
+        notes: "### Added\n- New behavior.",
+      }),
+      resolveReleaseAssets: async () => [],
+      publishRelease: async () => publishedRelease("2.0.0", 2),
+    });
+
+    assert.deepEqual(
+      calls.find((call) => call[0] === "compare"),
+      ["compare", null, "target-sha"],
+    );
+    assert.match(core.warningMessages[0], /stable Semantic Version release/);
   });
 
   it("resolves model defaults from the explicit API format", async () => {

@@ -21,6 +21,109 @@ describe("published release baseline", () => {
     );
   });
 
+  it("compares stable releases with the previous stable release", async () => {
+    const releases = [
+      {
+        tag_name: "nightly",
+        draft: false,
+        published_at: "2026-04-01T00:00:00Z",
+      },
+      {
+        tag_name: "4.0.0-rc.1",
+        draft: false,
+        prerelease: true,
+        published_at: "2026-03-01T00:00:00Z",
+      },
+      {
+        tag_name: "3.2.0",
+        draft: false,
+        prerelease: true,
+        published_at: "2026-02-15T00:00:00Z",
+      },
+      { tag_name: "3.1.0", draft: false, published_at: "2026-02-01T00:00:00Z" },
+    ];
+    const git = { hasCommit: async () => true, isAncestor: async () => true };
+
+    const stable = await selectBaseline(releases, "4.0.0", "head", git);
+    assert.equal(stable.baseline.tag_name, "3.1.0");
+    assert.equal(stable.reachable.length, 4);
+
+    const prerelease = await selectBaseline(
+      releases,
+      "4.0.0-rc.2",
+      "head",
+      git,
+      { stable: false },
+    );
+    assert.equal(prerelease.baseline.tag_name, "4.0.0-rc.1");
+
+    const migrated = await selectBaseline(
+      [
+        {
+          tag_name: "v3.1.0",
+          draft: false,
+          published_at: "2026-01-01T00:00:00Z",
+        },
+      ],
+      "3.2.0",
+      "head",
+      git,
+    );
+    assert.equal(migrated.baseline.tag_name, "v3.1.0");
+
+    const retagged = await selectBaseline(
+      [
+        {
+          tag_name: "v3.2.0",
+          draft: false,
+          published_at: "2026-02-01T00:00:00Z",
+        },
+        {
+          tag_name: "v3.1.0",
+          draft: false,
+          published_at: "2026-01-01T00:00:00Z",
+        },
+      ],
+      "3.2.0",
+      "head",
+      git,
+    );
+    assert.equal(retagged.baseline.tag_name, "v3.1.0");
+
+    const rebuilt = await selectBaseline(
+      [
+        {
+          tag_name: "3.2.0+build.1",
+          draft: false,
+          published_at: "2026-02-01T00:00:00Z",
+        },
+        {
+          tag_name: "3.1.0",
+          draft: false,
+          published_at: "2026-01-01T00:00:00Z",
+        },
+      ],
+      "3.2.0",
+      "head",
+      git,
+    );
+    assert.equal(rebuilt.baseline.tag_name, "3.1.0");
+
+    const revision = await selectBaseline(
+      [
+        {
+          tag_name: "3.2.0+revision.1",
+          draft: false,
+          published_at: "2026-02-01T00:00:00Z",
+        },
+      ],
+      "3.2.0+revision.2",
+      "head",
+      git,
+    );
+    assert.equal(revision.baseline.tag_name, "3.2.0+revision.1");
+  });
+
   it("updates only the body of an existing release", async () => {
     let parameters;
     const expected = {

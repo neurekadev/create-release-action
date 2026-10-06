@@ -1,3 +1,5 @@
+import { isPrerelease, parseSemVer } from "./semver.js";
+
 export class GitHubService {
   constructor(octokit, owner, repo) {
     this.octokit = octokit;
@@ -102,7 +104,40 @@ export class GitHubService {
   }
 }
 
-export async function selectBaseline(releases, currentTag, targetCommit, git) {
+function parseReleaseVersion(tag) {
+  // Earlier releases may predate bare tags, so accept a leading "v".
+  try {
+    return parseSemVer(tag.replace(/^v(?=\d)/, ""));
+  } catch {
+    return null;
+  }
+}
+
+// Build metadata other than a soft-fork revision does not change the
+// version, so 3.2.0+build.1 is the same release as 3.2.0.
+function sameVersion(left, right) {
+  return (
+    left.core === right.core &&
+    left.prerelease === right.prerelease &&
+    left.revision === right.revision
+  );
+}
+
+function isBaselineCandidate(release, target, stableTarget) {
+  const version = parseReleaseVersion(release.tag_name);
+  if (!version || (target && sameVersion(version, target))) return false;
+  return !stableTarget || (!isPrerelease(version) && !release.prerelease);
+}
+
+export async function selectBaseline(
+  releases,
+  currentTag,
+  targetCommit,
+  git,
+  options = {},
+) {
+  const stableTarget = options.stable ?? true;
+  const target = currentTag ? parseReleaseVersion(currentTag) : null;
   const candidates = releases
     .filter((release) => !release.draft && release.tag_name !== currentTag)
     .sort(
@@ -117,5 +152,11 @@ export async function selectBaseline(releases, currentTag, targetCommit, git) {
     if (await git.isAncestor(release.tag_name, targetCommit))
       reachable.push(release);
   }
-  return { baseline: reachable[0] || null, reachable };
+  return {
+    baseline:
+      reachable.find((release) =>
+        isBaselineCandidate(release, target, stableTarget),
+      ) || null,
+    reachable,
+  };
 }
