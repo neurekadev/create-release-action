@@ -268,6 +268,132 @@ describe("action orchestration", () => {
     }
   });
 
+  it("regenerates every published release oldest first when regenerate-all is true", async () => {
+    const calls = [];
+    const core = coreStub({ "regenerate-all": "true" });
+    const releases = [
+      publishedRelease("3.0.0", 4),
+      publishedRelease("4.0.0", 5, { draft: true }),
+      publishedRelease("2.0.0", 3),
+      publishedRelease("v0.9.0", 1),
+      publishedRelease("1.0.0", 2),
+    ];
+    const result = await runAction({
+      core,
+      env: dispatchEnvironment(),
+      githubService: {
+        listReleases: async () => releases,
+        async updateReleaseBody(id, body) {
+          calls.push(["update", id, body]);
+          return { ...releases.find((release) => release.id === id), body };
+        },
+      },
+      gitRepository: gitStub(calls),
+      createModelClient: () => ({}),
+      async generateNotes(_model, _comparison, options) {
+        calls.push(["generate", options.version.raw]);
+        return options.version.raw === "2.0.0"
+          ? { hasReleaseChanges: false, notes: "" }
+          : {
+              hasReleaseChanges: true,
+              notes: `### Changed\n- Notes for ${options.version.raw}.`,
+            };
+      },
+    });
+
+    assert.deepEqual(
+      calls.filter((call) => call[0] === "resolve"),
+      [
+        ["resolve", "refs/tags/1.0.0"],
+        ["resolve", "refs/tags/2.0.0"],
+        ["resolve", "refs/tags/3.0.0"],
+      ],
+    );
+    assert.deepEqual(
+      calls.filter((call) => call[0] === "update"),
+      [
+        ["update", 2, "### Changed\n- Notes for 1.0.0."],
+        ["update", 4, "### Changed\n- Notes for 3.0.0."],
+      ],
+    );
+    assert.deepEqual(
+      result.map((release) => release.tag_name),
+      ["1.0.0", "3.0.0"],
+    );
+    assert.match(core.warningMessages.join("\n"), /Skipped v0\.9\.0/);
+    assert.match(
+      core.warningMessages.join("\n"),
+      /Skipped 2\.0\.0: no changes/,
+    );
+    assert.match(core.infoMessages.at(-1), /Regenerated 2 releases, skipped 2/);
+    assert.equal(core.outputs.size, 0);
+  });
+
+  it("keeps regenerating after a failure and then fails listing it", async () => {
+    const updated = [];
+    await assert.rejects(
+      runAction({
+        core: coreStub({ "regenerate-all": "true" }),
+        env: dispatchEnvironment(),
+        githubService: {
+          listReleases: async () => [
+            publishedRelease("1.0.0", 1),
+            publishedRelease("2.0.0", 2),
+          ],
+          async updateReleaseBody(id, body) {
+            updated.push(id);
+            return { id, body, html_url: `https://github.test/${id}` };
+          },
+        },
+        gitRepository: gitStub(),
+        createModelClient: () => ({}),
+        async generateNotes(_model, _comparison, options) {
+          if (options.version.raw === "1.0.0") {
+            throw new Error("model unavailable");
+          }
+          return { hasReleaseChanges: true, notes: "### Fixed\n- A fix." };
+        },
+      }),
+      /Regenerated 1 release, skipped 0, failed 1\. Releases that failed were left unchanged: 1\.0\.0\./,
+    );
+    assert.deepEqual(updated, [2]);
+  });
+
+  it("validates the regenerate-all dispatch inputs", async () => {
+    for (const [inputs, pattern] of [
+      [
+        { "regenerate-all": "true", "release-tag": "2.0.0" },
+        /either release-tag or regenerate-all, not both/,
+      ],
+      [{ "regenerate-all": "yes" }, /regenerate-all must be true or false/],
+      [
+        { "regenerate-all": "true", "upstream-tag": "1.2.3" },
+        /upstream-tag .* must be auto with regenerate-all/,
+      ],
+      [
+        { "regenerate-all": "false" },
+        /release-tag is required .* unless regenerate-all is true/,
+      ],
+    ]) {
+      await assert.rejects(
+        runAction({ core: coreStub(inputs), env: dispatchEnvironment() }),
+        pattern,
+      );
+    }
+    await assert.rejects(
+      runAction({
+        core: coreStub({ "regenerate-all": "true" }),
+        env: dispatchEnvironment(),
+        githubService: {
+          listReleases: async () => [
+            publishedRelease("1.0.0", 1, { draft: true }),
+          ],
+        },
+      }),
+      /No published release exists; nothing was changed/,
+    );
+  });
+
   it("fails clearly when the dispatched tag is absent from local history", async () => {
     let updated = false;
     await assert.rejects(

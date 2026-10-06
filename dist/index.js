@@ -40986,6 +40986,14 @@ function requestOptionsInput(core) {
   return value;
 }
 
+function regenerateAllInput(core) {
+  const value = core.getInput("regenerate-all").trim().toLowerCase();
+  if (value !== "" && value !== "true" && value !== "false") {
+    throw new Error("regenerate-all must be true or false.");
+  }
+  return value === "true";
+}
+
 function releaseContext(core, env) {
   if (env.GITHUB_EVENT_NAME === "push") {
     if (env.GITHUB_REF_TYPE !== "tag") {
@@ -41004,9 +41012,21 @@ function releaseContext(core, env) {
 
   if (env.GITHUB_EVENT_NAME === "workflow_dispatch") {
     const tag = core.getInput("release-tag").trim();
-    if (!tag) {
+    const all = regenerateAllInput(core);
+    if (all && tag) {
       throw new Error(
-        "release-tag is required for workflow_dispatch regeneration runs.",
+        "Set either release-tag or regenerate-all, not both; nothing was changed.",
+      );
+    }
+    if (!all && !tag) {
+      throw new Error(
+        "release-tag is required for workflow_dispatch regeneration runs unless regenerate-all is true.",
+      );
+    }
+    const upstreamTag = core.getInput("upstream-tag").trim();
+    if (all && upstreamTag && upstreamTag !== "auto") {
+      throw new Error(
+        "upstream-tag names one release's upstream, so it must be auto with regenerate-all; nothing was changed.",
       );
     }
     if (!env.GITHUB_WORKSPACE) {
@@ -41014,7 +41034,8 @@ function releaseContext(core, env) {
     }
     return {
       regenerate: true,
-      tag,
+      all,
+      tag: all ? null : tag,
       sha: null,
       workspace: env.GITHUB_WORKSPACE,
     };
@@ -41048,6 +41069,17 @@ function setOutputs(core, release, notes, baselineTag) {
   core.setOutput("baseline-tag", baselineTag || "");
 }
 
+function publishedTagsOldestFirst(releases) {
+  const published = releases
+    .filter((release) => !release.draft)
+    .sort(
+      (left, right) =>
+        new Date(left.published_at || left.created_at).getTime() -
+        new Date(right.published_at || right.created_at).getTime(),
+    );
+  return [...new Set(published.map((release) => release.tag_name))];
+}
+
 async function runAction(dependencies) {
   const {
     core,
@@ -41057,7 +41089,7 @@ async function runAction(dependencies) {
     fetchImpl,
   } = dependencies;
   const context = releaseContext(core, env);
-  const version = parseSemVer(context.tag);
+  const version = context.all ? null : parseSemVer(context.tag);
   const audience = releaseNoteAudience(
     core.getInput("release-notes-audience", { required: true }),
   );
@@ -41078,7 +41110,11 @@ async function runAction(dependencies) {
     );
   const releases = await github.listReleases();
   let existing;
-  if (context.regenerate) {
+  if (context.all) {
+    if (!releases.some((release) => !release.draft)) {
+      throw new Error("No published release exists; nothing was changed.");
+    }
+  } else if (context.regenerate) {
     existing = regenerationRelease(releases, context.tag);
   } else {
     existing = releases.find((release) => release.tag_name === context.tag);
@@ -41098,77 +41134,142 @@ async function runAction(dependencies) {
 
   const git =
     dependencies.gitRepository || new GitRepository(context.workspace);
-  let targetCommit;
-  if (context.regenerate) {
-    try {
-      targetCommit = await git.resolveCommit(`refs/tags/${context.tag}`);
-    } catch {
-      throw new Error(
-        `Tag ${context.tag} does not resolve to a commit in the checked-out repository.`,
+  let model;
+  let repository;
+  const generateNotes = dependencies.generateNotes || generateReleaseNotes;
+
+  // Generates notes for one tag, or returns null when no change qualifies.
+  async function notesFor(tag, tagVersion, targetCommit) {
+    const { baseline, reachable } = await selectBaseline(
+      releases,
+      tag,
+      targetCommit,
+      git,
+      { stable: !isPrerelease(tagVersion) },
+    );
+    if (!baseline && reachable.length > 0) {
+      core.warning(
+        `No reachable ${isPrerelease(tagVersion) ? "" : "stable "}Semantic Version release can be the baseline, so the release notes cover the full history.`,
       );
     }
+    const history = analyzeForkHistory(reachable);
+    const releaseMode = validateReleaseTransition(tagVersion, history);
+    let softFork = null;
+    if (releaseMode === "soft") {
+      repository ??= await github.getRepository();
+      softFork = await resolveSoftFork({
+        github,
+        repository,
+        version: tagVersion,
+        previousRevision: history.previousRevision,
+        upstreamRepository: core.getInput("upstream-repository"),
+        upstreamTag: core.getInput("upstream-tag"),
+      });
+    }
+
+    const comparison = await git.buildComparison(
+      baseline?.tag_name || null,
+      targetCommit,
+    );
+    model ??= (dependencies.createModelClient || createModelClient)({
+      apiFormat,
+      baseUrl:
+        core.getInput("base-url") || MODEL_API_FORMATS[apiFormat].baseUrl,
+      apiKey,
+      model: core.getInput("model") || MODEL_API_FORMATS[apiFormat].model,
+      reasoningEffort: core.getInput("reasoning-effort"),
+      requestOptions: requestOptionsInput(core),
+      timeoutSeconds: integerInput(core, "timeout", 1),
+      fetchImpl,
+    });
+    const generated = await generateNotes(model, comparison, {
+      version: tagVersion,
+      baselineTag: baseline?.tag_name || null,
+      softFork,
+      audience,
+      maxChunk: integerInput(core, "max-chunk", 1000),
+    });
+    if (!generated.hasReleaseChanges) return null;
+    let notes = generated.notes;
+    if (softFork) notes = `${softFork.line}\n\n${notes}`;
+    return { notes, baselineTag: baseline?.tag_name || "" };
+  }
+
+  async function resolveReleaseTag(tag) {
+    try {
+      return await git.resolveCommit(`refs/tags/${tag}`);
+    } catch {
+      throw new Error(
+        `Tag ${tag} does not resolve to a commit in the checked-out repository.`,
+      );
+    }
+  }
+
+  if (context.all) {
+    const regenerated = [];
+    const skipped = [];
+    const failed = [];
+    for (const tag of publishedTagsOldestFirst(releases)) {
+      core.info(`Regenerating release notes for ${tag}.`);
+      try {
+        const target = regenerationRelease(releases, tag);
+        let tagVersion;
+        try {
+          tagVersion = parseSemVer(tag);
+        } catch (error) {
+          skipped.push(tag);
+          core.warning(`Skipped ${tag}: ${error.message}`);
+          continue;
+        }
+        const generated = await notesFor(
+          tag,
+          tagVersion,
+          await resolveReleaseTag(tag),
+        );
+        if (!generated) {
+          skipped.push(tag);
+          core.warning(
+            `Skipped ${tag}: no changes qualified for the ${audience} release-note audience, so its notes were left unchanged.`,
+          );
+          continue;
+        }
+        const release = await github.updateReleaseBody(
+          target.id,
+          generated.notes,
+        );
+        regenerated.push(release);
+        core.info(`Regenerated release notes for ${release.html_url}`);
+      } catch (error) {
+        failed.push(tag);
+        core.warning(
+          `Failed ${tag}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+    const summary = `Regenerated ${regenerated.length} release${regenerated.length === 1 ? "" : "s"}, skipped ${skipped.length}, failed ${failed.length}.`;
+    if (failed.length) {
+      throw new Error(
+        `${summary} Releases that failed were left unchanged: ${failed.join(", ")}.`,
+      );
+    }
+    core.info(summary);
+    return regenerated;
+  }
+
+  let targetCommit;
+  if (context.regenerate) {
+    targetCommit = await resolveReleaseTag(context.tag);
   } else {
     targetCommit = await git.resolveCommit(context.tag);
-  }
-  if (!context.regenerate && targetCommit !== context.sha) {
-    throw new Error(
-      `Tag ${context.tag} does not resolve to GITHUB_SHA ${context.sha}.`,
-    );
-  }
-
-  const { baseline, reachable } = await selectBaseline(
-    releases,
-    context.tag,
-    targetCommit,
-    git,
-    { stable: !isPrerelease(version) },
-  );
-  if (!baseline && reachable.length > 0) {
-    core.warning(
-      `No reachable ${isPrerelease(version) ? "" : "stable "}Semantic Version release can be the baseline, so the release notes cover the full history.`,
-    );
-  }
-  const history = analyzeForkHistory(reachable);
-  const releaseMode = validateReleaseTransition(version, history);
-  let softFork = null;
-  if (releaseMode === "soft") {
-    const repository = await github.getRepository();
-    softFork = await resolveSoftFork({
-      github,
-      repository,
-      version,
-      previousRevision: history.previousRevision,
-      upstreamRepository: core.getInput("upstream-repository"),
-      upstreamTag: core.getInput("upstream-tag"),
-    });
+    if (targetCommit !== context.sha) {
+      throw new Error(
+        `Tag ${context.tag} does not resolve to GITHUB_SHA ${context.sha}.`,
+      );
+    }
   }
 
-  const comparison = await git.buildComparison(
-    baseline?.tag_name || null,
-    targetCommit,
-  );
-  const modelOptions = {
-    apiFormat,
-    baseUrl: core.getInput("base-url") || MODEL_API_FORMATS[apiFormat].baseUrl,
-    apiKey,
-    model: core.getInput("model") || MODEL_API_FORMATS[apiFormat].model,
-    reasoningEffort: core.getInput("reasoning-effort"),
-    requestOptions: requestOptionsInput(core),
-    timeoutSeconds: integerInput(core, "timeout", 1),
-    fetchImpl,
-  };
-  const model = (dependencies.createModelClient || createModelClient)(
-    modelOptions,
-  );
-  const generateNotes = dependencies.generateNotes || generateReleaseNotes;
-  const generated = await generateNotes(model, comparison, {
-    version,
-    baselineTag: baseline?.tag_name || null,
-    softFork,
-    audience,
-    maxChunk: integerInput(core, "max-chunk", 1000),
-  });
-  if (!generated.hasReleaseChanges) {
+  const generated = await notesFor(context.tag, version, targetCommit);
+  if (!generated) {
     const outcome = context.regenerate
       ? `release ${context.tag} was left unchanged`
       : "no release was created";
@@ -41176,12 +41277,11 @@ async function runAction(dependencies) {
       `No changes qualified for the ${audience} release-note audience; ${outcome}.`,
     );
   }
-  let notes = generated.notes;
-  if (softFork) notes = `${softFork.line}\n\n${notes}`;
+  const { notes, baselineTag } = generated;
 
   if (context.regenerate) {
     const release = await github.updateReleaseBody(existing.id, notes);
-    setOutputs(core, release, notes, baseline?.tag_name || "");
+    setOutputs(core, release, notes, baselineTag);
     core.info(`Regenerated release notes for ${release.html_url}`);
     return release;
   }
@@ -41203,7 +41303,7 @@ async function runAction(dependencies) {
         ? "true"
         : "legacy",
   });
-  setOutputs(core, release, notes, baseline?.tag_name || "");
+  setOutputs(core, release, notes, baselineTag);
   core.info(`Published ${release.html_url}`);
   return release;
 }

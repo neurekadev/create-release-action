@@ -30,6 +30,10 @@ inputs:
   release-tag:
     description: Existing bare Semantic Version release tag to regenerate during workflow_dispatch.
     required: false
+  regenerate-all:
+    description: Overwrite the notes of every published release during workflow_dispatch; true or false. Leave release-tag empty when true.
+    required: false
+    default: "false"
   release-notes-audience:
     description: Release-note audience and detail level; end-user, technical, or maintainer.
     required: false

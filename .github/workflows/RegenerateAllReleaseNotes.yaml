@@ -1,0 +1,47 @@
+name: Regenerate All Release Notes
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm-overwrite:
+        description: I confirm overwriting the notes of every published release.
+        required: false
+        default: false
+        type: boolean
+      release-notes-audience:
+        description: Audience for the regenerated notes.
+        required: false
+        default: end-user
+        type: choice
+        options:
+          - end-user
+          - technical
+          - maintainer
+
+permissions: {}
+
+jobs:
+  regenerate-all-release-notes:
+    name: Regenerate All Release Notes
+    if: github.event_name == 'workflow_dispatch' && inputs.confirm-overwrite
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      contents: write
+    steps:
+      - name: Check Out Repository History
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Regenerate All Release Notes
+        uses: ./
+        with:
+          github-token: ${{ github.token }}
+          api-format: anthropic
+          api-key: ${{ secrets.MODEL_API_KEY }}
+          base-url: https://agents.neureka.dev
+          model: claude-opus-5-5
+          reasoning-effort: high
+          regenerate-all: true
+          release-notes-audience: ${{ inputs.release-notes-audience }}

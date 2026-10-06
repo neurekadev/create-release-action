@@ -50,59 +50,13 @@ Push a complete bare Semantic Version tag such as `1.4.0`. Do not prefix it with
 
 The action defaults to OpenAI GPT-5.6 Luna with `xhigh` reasoning effort. The examples pin those values so published workflows stay consistent. To use Anthropic or another provider, see [Model Providers](#model-providers).
 
-### Regenerate Release Notes
+### Example Workflows
 
-Add a dedicated `.github/workflows/RegenerateReleaseNotes.yaml` workflow to regenerate the body of a published release manually. The action keeps its other input defaults.
+This repository's own manual workflows double as examples. When copying one, use your provider's model inputs.
 
-```yaml
-name: Regenerate Release Notes
-
-on:
-  workflow_dispatch:
-    inputs:
-      release-tag:
-        description: Existing bare Semantic Version release tag.
-        required: true
-        type: string
-      release-notes-audience:
-        description: Audience for the regenerated notes.
-        required: false
-        default: end-user
-        type: choice
-        options:
-          - end-user
-          - technical
-          - maintainer
-
-permissions: {}
-
-jobs:
-  regenerate-release-notes:
-    name: Regenerate Release Notes
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: write
-    steps:
-      - name: Check Out Repository History
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Regenerate Release Notes
-        uses: neurekadev/create-release-action@3
-        with:
-          github-token: ${{ github.token }}
-          api-key: ${{ secrets.MODEL_API_KEY }}
-          base-url: https://api.openai.com/v1
-          model: gpt-5.6-luna
-          reasoning-effort: xhigh
-          release-tag: ${{ inputs.release-tag }}
-          release-notes-audience: ${{ inputs.release-notes-audience }}
-```
-
-The selected published release is edited in place. Its tag, name, release ID, assets, published and prerelease states, and latest-release behavior are preserved.
+- [Regenerate Release Notes](./.github/workflows/RegenerateReleaseNotes.yaml): rewrites the notes of one published release in place. Replace `uses: ./` with `neurekadev/create-release-action@3`.
+- [Regenerate All Release Notes](./.github/workflows/RegenerateAllReleaseNotes.yaml): rewrites the notes of every published release, and runs only when you check the overwrite confirmation. Replace `uses: ./` with `neurekadev/create-release-action@3`.
+- [Release Notes Preview](./.github/workflows/ReleaseNotesPreview.yaml): generates notes for all three audiences as downloadable artifacts, for this or any public repository, without publishing. Add `repository: neurekadev/create-release-action` to its first checkout.
 
 ### Inputs
 
@@ -115,13 +69,14 @@ The selected published release is edited in place. Its tag, name, release ID, as
 | `model`                  | Empty      | Model identifier; `gpt-5.6-luna` or `claude-opus-5-5` when empty.                                             |
 | `reasoning-effort`       | `xhigh`    | Reasoning effort sent to the model; `none` leaves it out.                                                     |
 | `release-tag`            | Empty      | Existing published bare Semantic Version tag to regenerate during `workflow_dispatch`.                        |
+| `regenerate-all`         | `false`    | Overwrite the notes of every published release during `workflow_dispatch`. Leave `release-tag` empty.         |
 | `release-notes-audience` | `end-user` | Who the notes are for: `end-user`, `technical`, or `maintainer`. See [audiences](#release-note-audiences).    |
 | `request-options`        | `{}`       | Extra JSON merged into the model request body.                                                                |
 | `max-chunk`              | `200000`   | Maximum comparison characters per analysis request.                                                           |
 | `timeout`                | `300`      | Timeout in seconds for each model request.                                                                    |
 | `files`                  | Empty      | Newline-separated asset paths or glob patterns used only when creating a release.                             |
 | `upstream-repository`    | `auto`     | `owner/repository` used to resolve soft-fork upstream release notes.                                          |
-| `upstream-tag`           | `auto`     | Exact soft-fork upstream release tag when it cannot be inferred.                                              |
+| `upstream-tag`           | `auto`     | Exact soft-fork upstream release tag when it cannot be inferred. Must be `auto` with `regenerate-all`.        |
 
 ### Outputs
 
@@ -136,7 +91,7 @@ The selected published release is edited in place. Its tag, name, release ID, as
 
 - Analyzes complete commit history and textual diffs without truncating large comparisons.
 - Generates audience-aware release notes from plain-language summaries through complete maintainer detail.
-- Regenerates a published release's notes in place from a manual workflow run.
+- Regenerates the notes of one or every published release in place from a manual workflow run.
 - Publishes requested assets through a draft-first flow with scoped failure cleanup.
 - Supports ordinary releases plus contiguous soft-fork revisions and hard-fork transitions.
 
@@ -210,6 +165,8 @@ A hard fork owns an independent version line and uses ordinary Semantic Version 
 Notes are generated before GitHub is mutated. On a tag push, the action then creates a draft, uploads every requested asset, and publishes it. A failed run removes only its own still-draft release. An existing published release remains a no-op, while an existing draft blocks the run.
 
 On `workflow_dispatch`, `release-tag` selects one existing published release and regenerates its notes with the same comparison, validation, fork, and generation rules. Only the body is updated after generation succeeds; release metadata and assets remain unchanged. A missing, draft-only, invalid, or ambiguous target fails without changing a release.
+
+Setting `regenerate-all` to `true` instead regenerates every published release, oldest first, with the same rules. Releases with a tag that is not bare Semantic Version, or with no qualifying changes for the audience, are skipped and keep their notes. A failure on one release does not stop the others; the run fails at the end and lists the releases it left unchanged. Outputs are only set for single-release runs.
 
 When no change qualifies for the selected audience, the run fails on purpose instead of publishing empty notes: a tag push creates no release, and regeneration leaves the release unchanged. This usually happens with `end-user` notes for documentation-, CI-, or test-only tags. Skip tagging such changes, or choose the `maintainer` audience, the only one that includes documentation, CI, test, and tooling changes.
 
