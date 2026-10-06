@@ -70,6 +70,25 @@ describe("published release baseline", () => {
       git,
     );
     assert.equal(migrated.baseline.tag_name, "v3.1.0");
+
+    const retagged = await selectBaseline(
+      [
+        {
+          tag_name: "v3.2.0",
+          draft: false,
+          published_at: "2026-02-01T00:00:00Z",
+        },
+        {
+          tag_name: "v3.1.0",
+          draft: false,
+          published_at: "2026-01-01T00:00:00Z",
+        },
+      ],
+      "3.2.0",
+      "head",
+      git,
+    );
+    assert.equal(retagged.baseline.tag_name, "v3.1.0");
   });
 
   it("updates only the body of an existing release", async () => {

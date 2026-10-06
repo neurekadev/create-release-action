@@ -104,11 +104,14 @@ export class GitHubService {
   }
 }
 
-function isBaselineCandidate(release, stableTarget) {
+function isBaselineCandidate(release, currentTag, stableTarget) {
+  // Earlier releases may predate bare tags, so accept a leading "v", but
+  // never compare a version with its own v-prefixed release.
+  const tag = release.tag_name.replace(/^v(?=\d)/, "");
+  if (tag === currentTag) return false;
   let version;
   try {
-    // Earlier releases may predate bare tags, so accept a leading "v".
-    version = parseSemVer(release.tag_name.replace(/^v(?=\d)/, ""));
+    version = parseSemVer(tag);
   } catch {
     return false;
   }
@@ -139,8 +142,9 @@ export async function selectBaseline(
   }
   return {
     baseline:
-      reachable.find((release) => isBaselineCandidate(release, stableTarget)) ||
-      null,
+      reachable.find((release) =>
+        isBaselineCandidate(release, currentTag, stableTarget),
+      ) || null,
     reachable,
   };
 }
