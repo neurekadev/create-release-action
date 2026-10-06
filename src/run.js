@@ -75,6 +75,12 @@ function releaseContext(core, env) {
         "release-tag is required for workflow_dispatch regeneration runs unless regenerate-all is true.",
       );
     }
+    const upstreamTag = core.getInput("upstream-tag").trim();
+    if (all && upstreamTag && upstreamTag !== "auto") {
+      throw new Error(
+        "upstream-tag names one release's upstream, so it must be auto with regenerate-all; nothing was changed.",
+      );
+    }
     if (!env.GITHUB_WORKSPACE) {
       throw new Error("GitHub workflow_dispatch context is incomplete.");
     }

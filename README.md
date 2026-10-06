@@ -76,7 +76,7 @@ This repository's own manual workflows double as examples. When copying one, use
 | `timeout`                | `300`      | Timeout in seconds for each model request.                                                                    |
 | `files`                  | Empty      | Newline-separated asset paths or glob patterns used only when creating a release.                             |
 | `upstream-repository`    | `auto`     | `owner/repository` used to resolve soft-fork upstream release notes.                                          |
-| `upstream-tag`           | `auto`     | Exact soft-fork upstream release tag when it cannot be inferred.                                              |
+| `upstream-tag`           | `auto`     | Exact soft-fork upstream release tag when it cannot be inferred. Must be `auto` with `regenerate-all`.        |
 
 ### Outputs
 

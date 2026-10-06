@@ -367,6 +367,10 @@ describe("action orchestration", () => {
       ],
       [{ "regenerate-all": "yes" }, /regenerate-all must be true or false/],
       [
+        { "regenerate-all": "true", "upstream-tag": "1.2.3" },
+        /upstream-tag .* must be auto with regenerate-all/,
+      ],
+      [
         { "regenerate-all": "false" },
         /release-tag is required .* unless regenerate-all is true/,
       ],
