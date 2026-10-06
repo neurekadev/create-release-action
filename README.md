@@ -115,7 +115,7 @@ The selected published release is edited in place. Its tag, name, release ID, as
 | `model`                  | Empty      | Model identifier; `gpt-5.6-luna` or `claude-opus-5-5` when empty.                                             |
 | `reasoning-effort`       | `xhigh`    | Reasoning effort sent to the model; `none` leaves it out.                                                     |
 | `release-tag`            | Empty      | Existing published bare Semantic Version tag to regenerate during `workflow_dispatch`.                        |
-| `release-notes-audience` | `end-user` | Note audience: `end-user`, `technical`, or `maintainer`.                                                      |
+| `release-notes-audience` | `end-user` | Who the notes are for: `end-user`, `technical`, or `maintainer`. See [audiences](#release-note-audiences).    |
 | `request-options`        | `{}`       | Extra JSON merged into the model request body.                                                                |
 | `max-chunk`              | `200000`   | Maximum comparison characters per analysis request.                                                           |
 | `timeout`                | `300`      | Timeout in seconds for each model request.                                                                    |
@@ -186,11 +186,21 @@ reasoning-effort: high # or none if the provider has no effort setting
 - Anthropic requests allow 32000 output tokens. Raise the limit with `request-options: '{"max_tokens": 64000}'`.
 - Leave `api-key` empty for endpoints that need no authentication.
 
+## Release Note Audiences
+
+`release-notes-audience` picks who the notes are written for. Every audience gets short, one-line bullets with the most important change first, names real features and settings instead of vague wording, and lists breaking changes first with what to change.
+
+| Audience             | Written for                                                                                                                                                         | Includes                                                                                                                   | Leaves out                                                                                  |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `end-user` (default) | The people your software is for, in the words they already use: everyday users of an app, developers using a library or CLI, or administrators of a hosted service. | What users can now do, what works differently, what got fixed, and anything they must change.                              | How it was built, internal code, tests, CI, build tooling, dependency updates, minor fixes. |
+| `technical`          | People who install, configure, integrate, or automate your software but don't work on its code.                                                                     | Everything in `end-user`, plus exact setting names, defaults, old and new values, supported versions, and compatibility.   | Internal implementation, tests, CI, build tooling, file moves.                              |
+| `maintainer`         | People who work on the code itself.                                                                                                                                 | Every distinct change, including internal code, dependencies, CI, tests, builds, tooling, and refactors, with exact names. | Nothing that shipped.                                                                       |
+
 ## Release Rules
 
 The newest published release reachable from the pushed tag is the baseline. The action sends the complete commit history and textual diff for that comparison to the configured model endpoint. Large comparisons are analyzed losslessly in chunks and synthesized without truncation.
 
-Release notes describe net changes under `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, and `Security`; deduplicate related work; and do not read or require `CHANGELOG.md`. The default `end-user` audience uses everyday language and includes only noticeable outcomes. `technical` retains useful public API, configuration, compatibility, and operational specifics. `maintainer` includes every distinct net product and internal change. A release is not created when no changes qualify for the selected audience.
+Release notes describe net changes under `Breaking Changes`, `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, and `Security`; deduplicate related work; and do not read or require `CHANGELOG.md`. Content depends on the [release note audience](#release-note-audiences). A release is not created when no changes qualify for the selected audience.
 
 A soft fork continues an upstream version line with `X.Y.Z+revision.N`, where `X.Y.Z` is the exact stable upstream release and `N` is a contiguous downstream revision. A newer upstream core resets the revision to `1`. The action adds a canonical upstream release link and includes only qualifying downstream changes for the selected audience. GitHub fork metadata helps resolve the upstream but does not force this scheme.
 

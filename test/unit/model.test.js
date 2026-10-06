@@ -721,15 +721,17 @@ describe("release-note audiences", () => {
 
   it("defines everyday, technical, and complete writing contracts", () => {
     const endUser = releasePolicies("end-user");
-    assert.match(endUser.release, /no programming knowledge/);
-    assert.match(endUser.release, /There is no hard bullet limit/);
+    assert.match(endUser.release, /vocabulary they already use/);
+    assert.match(endUser.release, /Describe effects, not mechanisms/);
     assert.match(endUser.release, /Fetch, WebSocket/);
-    assert.match(endUser.release, /Semantic Versioning, tags, baselines/);
-    assert.match(endUser.release, /glob patterns/);
+    assert.match(endUser.evidence, /developers for libraries/);
+    assert.doesNotMatch(endUser.release, /no programming knowledge/);
+    assert.doesNotMatch(endUser.release, /glob patterns/);
 
     const technical = releasePolicies("technical");
-    assert.match(technical.release, /public API/);
-    assert.match(technical.release, /operators, and integrators/);
+    assert.match(technical.release, /do not maintain it/);
+    assert.match(technical.release, /Never describe internal mechanics/);
+    assert.match(technical.evidence, /do not work on its source code/);
 
     const maintainer = releasePolicies("maintainer");
     assert.match(
@@ -737,6 +739,28 @@ describe("release-note audiences", () => {
       /every distinct product and internal change/,
     );
     assert.match(maintainer.release, /frontend performance improvements/);
+  });
+
+  it("keeps breaking changes and readable wording for every audience", () => {
+    for (const audience of ["end-user", "technical", "maintainer"]) {
+      const policies = releasePolicies(audience);
+      for (const stage of ["evidence", "reduce", "filter", "release"]) {
+        assert.match(policies[stage], /Always keep every breaking change/);
+        assert.match(policies[stage], /BREAKING CHANGE:/);
+      }
+      for (const stage of ["evidence", "reduce", "filter"]) {
+        assert.match(policies[stage], /Breaking Changes\|Added\|Changed/);
+        assert.match(policies[stage], /Do not soften or generalize/);
+      }
+      assert.match(
+        policies.release,
+        /Breaking Changes, Added, Changed, Deprecated, Removed, Fixed, Security/,
+      );
+      assert.match(policies.release, /One change per bullet/);
+      assert.match(policies.release, /each bullet on a single line/);
+      assert.match(policies.release, /Be concrete/);
+      assert.doesNotMatch(policies.release, /imperative, present-tense/);
+    }
   });
 });
 
@@ -971,6 +995,23 @@ describe("release-note generation", () => {
           notes: "### Fixed\ntext",
         }),
       /only allowed/,
+    );
+    assert.deepEqual(
+      validateReleaseNotes({
+        has_release_changes: true,
+        notes:
+          "### Breaking Changes\n- The `token` input is now `api-key`.\n\n### Added\n- Exports can now be saved as PDF.",
+      }).hasReleaseChanges,
+      true,
+    );
+    assert.throws(
+      () =>
+        validateReleaseNotes({
+          has_release_changes: true,
+          notes:
+            "### Added\n- Exports can now be saved as PDF.\n\n### Breaking Changes\n- The `token` input is now `api-key`.",
+        }),
+      /out of order/,
     );
   });
 });

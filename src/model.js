@@ -1,18 +1,10 @@
 import {
   DEFAULT_RELEASE_NOTE_AUDIENCE,
+  RELEASE_NOTE_SECTIONS,
   releaseContext,
   releaseNoteAudience,
   releasePolicies,
 } from "./policy.js";
-
-const RELEASE_NOTE_SECTIONS = Object.freeze([
-  "Added",
-  "Changed",
-  "Deprecated",
-  "Removed",
-  "Fixed",
-  "Security",
-]);
 
 const CONTEXT_ONLY_DIRECTORIES = new Set([
   ".github",
