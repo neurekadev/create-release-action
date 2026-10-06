@@ -54,7 +54,8 @@ The action defaults to OpenAI GPT-5.6 Luna with `xhigh` reasoning effort. The ex
 
 This repository's own manual workflows double as examples. When copying one, use your provider's model inputs.
 
-- [Regenerate Release Notes](./.github/workflows/RegenerateReleaseNotes.yaml): rewrites the notes of one published release in place, or of every published release when you check **Regenerate all**. Replace `uses: ./` with `neurekadev/create-release-action@3`.
+- [Regenerate Release Notes](./.github/workflows/RegenerateReleaseNotes.yaml): rewrites the notes of one published release in place. Replace `uses: ./` with `neurekadev/create-release-action@3`.
+- [Regenerate All Release Notes](./.github/workflows/RegenerateAllReleaseNotes.yaml): rewrites the notes of every published release, and runs only when you check the overwrite confirmation. Replace `uses: ./` with `neurekadev/create-release-action@3`.
 - [Release Notes Preview](./.github/workflows/ReleaseNotesPreview.yaml): generates notes for all three audiences as downloadable artifacts, for this or any public repository, without publishing. Add `repository: neurekadev/create-release-action` to its first checkout.
 
 ### Inputs

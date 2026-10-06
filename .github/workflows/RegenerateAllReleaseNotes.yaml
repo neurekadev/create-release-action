@@ -1,12 +1,13 @@
-name: Regenerate Release Notes
+name: Regenerate All Release Notes
 
 on:
   workflow_dispatch:
     inputs:
-      release-tag:
-        description: Existing bare Semantic Version release tag.
-        required: true
-        type: string
+      confirm-overwrite:
+        description: I confirm overwriting the notes of every published release.
+        required: false
+        default: false
+        type: boolean
       release-notes-audience:
         description: Audience for the regenerated notes.
         required: false
@@ -20,11 +21,11 @@ on:
 permissions: {}
 
 jobs:
-  regenerate-release-notes:
-    name: Regenerate Release Notes
-    if: github.event_name == 'workflow_dispatch'
+  regenerate-all-release-notes:
+    name: Regenerate All Release Notes
+    if: github.event_name == 'workflow_dispatch' && inputs.confirm-overwrite
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 360
     permissions:
       contents: write
     steps:
@@ -33,7 +34,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Regenerate Release Notes
+      - name: Regenerate All Release Notes
         uses: ./
         with:
           github-token: ${{ github.token }}
@@ -42,5 +43,5 @@ jobs:
           base-url: https://agents.neureka.dev
           model: claude-opus-5-5
           reasoning-effort: high
-          release-tag: ${{ inputs.release-tag }}
+          regenerate-all: true
           release-notes-audience: ${{ inputs.release-notes-audience }}
