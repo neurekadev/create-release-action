@@ -26,11 +26,12 @@ const CONTEXT_ONLY_DIRECTORIES = new Set([
   "vendor",
 ]);
 
-// Output directories are context-only unless they sit inside source code.
-// A strong source root counts anywhere above them, so src/build/ is product
-// source. A generic root such as app or lib must sit above their parent,
-// because app/build/ and packages/lib/dist/ are generated output.
-const GENERATED_OUTPUT_DIRECTORIES = new Set(["build", "coverage", "dist"]);
+// dist always holds generated output. build and coverage are context-only
+// unless they sit inside source code: a strong source root counts anywhere
+// above them, so src/build/ is product source, while a generic root such as
+// app or lib must sit above their parent, because app/build/ is output.
+const ALWAYS_GENERATED_DIRECTORIES = new Set(["dist"]);
+const GENERATED_OUTPUT_DIRECTORIES = new Set(["build", "coverage"]);
 
 const STRONG_SOURCE_ROOT_DIRECTORIES = new Set([
   "cmd",
@@ -40,10 +41,11 @@ const STRONG_SOURCE_ROOT_DIRECTORIES = new Set([
   "src",
 ]);
 
-// Spec directories hold tests, except for interface definitions such as
-// spec/openapi.yaml, which are public contracts.
+// Spec directories hold tests and test data, except for interface
+// definitions such as spec/openapi.yaml, which are public contracts.
 const SPEC_DIRECTORIES = new Set(["spec", "specs"]);
-const CONTRACT_FILE_PATTERN = /\.(?:graphql|gql|json|proto|ya?ml)$/;
+const CONTRACT_FILE_PATTERN =
+  /(?:\.(?:graphql|gql|proto)|(?:^|[._-])(?:api|asyncapi|openapi|schema|swagger)(?:[._-].*)?\.(?:json|ya?ml))$/;
 
 // The underscore test suffix is conventional only in these languages, so
 // product modules such as src/ab_test.ts stay primary.
@@ -193,6 +195,9 @@ export function isContextOnlyPath(value) {
     directories.some((part) => SPEC_DIRECTORIES.has(part)) &&
     !CONTRACT_FILE_PATTERN.test(basename)
   ) {
+    return true;
+  }
+  if (directories.some((part) => ALWAYS_GENERATED_DIRECTORIES.has(part))) {
     return true;
   }
   const output = directories.findIndex((part) =>
