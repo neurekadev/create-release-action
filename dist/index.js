@@ -39780,17 +39780,28 @@ class GitHubService {
   }
 }
 
-function isBaselineCandidate(release, currentTag, stableTarget) {
-  // Earlier releases may predate bare tags, so accept a leading "v", but
-  // never compare a version with its own v-prefixed release.
-  const tag = release.tag_name.replace(/^v(?=\d)/, "");
-  if (tag === currentTag) return false;
-  let version;
+function parseReleaseVersion(tag) {
+  // Earlier releases may predate bare tags, so accept a leading "v".
   try {
-    version = parseSemVer(tag);
+    return parseSemVer(tag.replace(/^v(?=\d)/, ""));
   } catch {
-    return false;
+    return null;
   }
+}
+
+// Build metadata other than a soft-fork revision does not change the
+// version, so 3.2.0+build.1 is the same release as 3.2.0.
+function sameVersion(left, right) {
+  return (
+    left.core === right.core &&
+    left.prerelease === right.prerelease &&
+    left.revision === right.revision
+  );
+}
+
+function isBaselineCandidate(release, target, stableTarget) {
+  const version = parseReleaseVersion(release.tag_name);
+  if (!version || (target && sameVersion(version, target))) return false;
   return !stableTarget || (!isPrerelease(version) && !release.prerelease);
 }
 
@@ -39802,6 +39813,7 @@ async function selectBaseline(
   options = {},
 ) {
   const stableTarget = options.stable ?? true;
+  const target = currentTag ? parseReleaseVersion(currentTag) : null;
   const candidates = releases
     .filter((release) => !release.draft && release.tag_name !== currentTag)
     .sort(
@@ -39819,7 +39831,7 @@ async function selectBaseline(
   return {
     baseline:
       reachable.find((release) =>
-        isBaselineCandidate(release, currentTag, stableTarget),
+        isBaselineCandidate(release, target, stableTarget),
       ) || null,
     reachable,
   };
