@@ -211,6 +211,8 @@ Notes are generated before GitHub is mutated. On a tag push, the action then cre
 
 On `workflow_dispatch`, `release-tag` selects one existing published release and regenerates its notes with the same comparison, validation, fork, and generation rules. Only the body is updated after generation succeeds; release metadata and assets remain unchanged. A missing, draft-only, invalid, or ambiguous target fails without changing a release.
 
+When no change qualifies for the selected audience, the run fails on purpose instead of publishing empty notes: a tag push creates no release, and regeneration leaves the release unchanged. This usually happens with `end-user` notes for documentation-, CI-, or test-only tags. Skip tagging such changes, or choose the `maintainer` audience, the only one that includes documentation, CI, test, and tooling changes.
+
 ## Data and Credentials
 
 Repository commit messages and textual diffs are sent to the configured endpoint. Choose a provider whose data-handling terms fit your repository. Binary contents are not included, but textual diffs can contain sensitive values committed to Git history.
