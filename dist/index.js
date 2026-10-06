@@ -39943,11 +39943,13 @@ const CONTEXT_ONLY_DIRECTORIES = new Set([
   "vendor",
 ]);
 
-// dist always holds generated output. build and coverage are context-only
-// unless they sit inside source code: a strong source root counts anywhere
-// above them, so src/build/ is product source, while a generic root such as
-// app or lib must sit above their parent, because app/build/ is output.
-const ALWAYS_GENERATED_DIRECTORIES = new Set(["dist"]);
+// Output directories are context-only unless they sit inside source code.
+// A dist folder counts as source only directly under a strong source root,
+// such as src/dist/, because nested dist folders hold committed bundles.
+// A build or coverage folder counts as source under a strong source root
+// anywhere above it, or under a generic root such as app or lib above its
+// parent, because app/build/ is generated output.
+const DIST_DIRECTORY = "dist";
 const GENERATED_OUTPUT_DIRECTORIES = new Set(["build", "coverage"]);
 
 const STRONG_SOURCE_ROOT_DIRECTORIES = new Set([
@@ -39961,8 +39963,14 @@ const STRONG_SOURCE_ROOT_DIRECTORIES = new Set([
 // Spec directories hold tests and test data, except for interface
 // definitions such as spec/openapi.yaml, which are public contracts.
 const SPEC_DIRECTORIES = new Set(["spec", "specs"]);
+const SPEC_TEST_DATA_DIRECTORIES = new Set([
+  "cassettes",
+  "snapshots",
+  "support",
+  "vcr_cassettes",
+]);
 const CONTRACT_FILE_PATTERN =
-  /(?:\.(?:graphql|gql|proto)|(?:^|[._-])(?:api|asyncapi|openapi|schema|swagger)(?:[._-].*)?\.(?:json|ya?ml))$/;
+  /(?:\.(?:graphql|gql|proto)|^(?:api|asyncapi|openapi|schema|swagger)(?:[._-].*)?\.(?:json|ya?ml))$/;
 
 // The underscore test suffix is conventional only in these languages, so
 // product modules such as src/ab_test.ts stay primary.
@@ -40110,11 +40118,13 @@ function isContextOnlyPath(value) {
   }
   if (
     directories.some((part) => SPEC_DIRECTORIES.has(part)) &&
-    !CONTRACT_FILE_PATTERN.test(basename)
+    (directories.some((part) => SPEC_TEST_DATA_DIRECTORIES.has(part)) ||
+      !CONTRACT_FILE_PATTERN.test(basename))
   ) {
     return true;
   }
-  if (directories.some((part) => ALWAYS_GENERATED_DIRECTORIES.has(part))) {
+  const dist = directories.indexOf(DIST_DIRECTORY);
+  if (dist >= 0 && !STRONG_SOURCE_ROOT_DIRECTORIES.has(directories[dist - 1])) {
     return true;
   }
   const output = directories.findIndex((part) =>
